@@ -127,9 +127,10 @@ Networks
 
 class ResGenerator(nn.Module):
     def __init__(self, img_size=128, dim_in=32, style_dim=64, max_conv_dim=512,
-                 num_channels=3):
+                 num_channels=3, sigmoid_output=False):
         super().__init__()
         self.img_size = img_size
+        self.sigmoid_output = sigmoid_output
         self.from_input = nn.Conv2d(num_channels, dim_in, 3, 1, 1)
 
         self.encode = nn.ModuleList()
@@ -138,6 +139,9 @@ class ResGenerator(nn.Module):
             nn.InstanceNorm2d(dim_in, affine=True),
             nn.LeakyReLU(0.2),
             nn.Conv2d(dim_in, num_channels, 1, 1, 0))
+
+        if sigmoid_output:
+            self.sigmoid = nn.Sigmoid()
 
         # down/up-sampling blocks
         repeat_num = max(int(np.log2(img_size)) - 4, 2)
@@ -168,8 +172,11 @@ class ResGenerator(nn.Module):
         for block in self.decode:
             x = block(x, s)
 
-        return self.to_output(x)
+        output = self.to_output(x)
+        if self.sigmoid_output:
+            output = self.sigmoid(output)
 
+        return output
 
 class MappingNetwork(nn.Module):
     def __init__(self, latent_dim=16, style_dim=64, num_domains=2):
@@ -263,6 +270,7 @@ class MLPDiscriminator(MLP):
         self.real_fake_classifier = nn.Linear(100, 1)
 
     def forward(self, x):
+        x = x.view(x.size(0), -1)
         h = self.feature(x)
 
         out_cls = self.classifier(h)
@@ -312,149 +320,3 @@ class Normalize(nn.Module):
         out = x.div(norm + 1e-7)
         return out
 
-
-def build_model(args):
-    if args.stargan == 'v2' or args.stargan == 'v2_task_driven':
-        return build_starganv2(args)
-    elif args.stargan == 'v1':
-        return build_starganv1(args)
-    elif args.stargan == 'cycle':
-        return build_cyclegan(args)
-    elif args.stargan == 'cut':
-        return build_cut(args)
-    else:
-        raise NotImplementedError
-
-def build_starganv2(args):
-    if args.G_architecture == 'resnet':
-        generator = ResGenerator(args.img_size, args.style_dim, w_hpf=args.w_hpf,
-                                 num_channels=args.num_channels)
-    elif args.G_architecture == 'unet':
-        generator = UnetGenerator(args.img_size, args.style_dim, num_channels=args.num_channels)
-    else:
-        raise ValueError('Base architecture should be either resnet or unet')
-
-    BagKwargs = {
-        'stride': [2,2,2,2,2,2],
-        'kernel3x3': [1,1,1,1,0,0],
-    }
-    discriminator = Discriminator(args.img_size, args.num_domains, num_channels=args.num_channels,
-                                  architecture=args.D_architecture, crop=args.D_crop,
-                                  **BagKwargs)
-
-    mapping_network = MappingNetwork(args.latent_dim, args.style_dim, args.num_domains)
-    style_encoder = StyleEncoder(args.img_size, args.style_dim, args.num_domains,
-                                 num_channels=args.num_channels)
-    generator_ema = copy.deepcopy(generator)
-    mapping_network_ema = copy.deepcopy(mapping_network)
-    style_encoder_ema = copy.deepcopy(style_encoder)
-
-    nets = Munch(generator=generator,
-                 mapping_network=mapping_network,
-                 style_encoder=style_encoder,
-                 discriminator=discriminator)
-    nets_ema = Munch(generator=generator_ema,
-                     mapping_network=mapping_network_ema,
-                     style_encoder=style_encoder_ema)
-
-    if args.w_hpf > 0:
-        fan = FAN(fname_pretrained=args.wing_path).eval()
-        nets.fan = fan
-        nets_ema.fan = fan
-
-    return nets, nets_ema
-
-def build_starganv1(args):
-    # No style encoder
-    if args.G_architecture == 'resnet':
-        raise ValueError('ResNet Generator for StarGAN v1 is not available now')
-    elif args.G_architecture == 'unet':
-        generator = V1UnetGenerator(args.img_size, args.style_dim,
-                                    num_channels=args.num_channels, num_domains=args.num_domains)
-    else:
-        raise ValueError('Base architecture should be either resnet or unet')
-
-    # For BagNet architecture (Not used. ResNet is default option)
-    BagKwargs = {
-        'stride': [2,2,2,2,2,2],
-        'kernel3x3': [1,1,1,1,0,0],
-    }
-    discriminator = V1Discriminator(args.img_size, args.num_domains, num_channels=args.num_channels,
-                                    architecture=args.D_architecture, crop=args.D_crop,
-                                    **BagKwargs)
-    # mapping_network: adaIN network for the decoder
-    mapping_network = V1MappingNetwork(args.latent_dim, args.style_dim, args.num_domains)
-
-    generator_ema = copy.deepcopy(generator)
-    mapping_network_ema = copy.deepcopy(mapping_network)
-
-    nets = Munch(generator=generator,
-                 mapping_network=mapping_network,
-                 discriminator=discriminator)
-    nets_ema = Munch(generator=generator_ema,
-                     mapping_network=mapping_network_ema)
-
-    return nets, nets_ema
-
-def build_cyclegan(args):
-    # No style encoder
-    if args.G_architecture == 'resnet':
-        raise ValueError('ResNet Generator for CycleGAN is not available now')
-    elif args.G_architecture == 'unet':
-        G_S2T = CycleUnetGenerator(args.img_size, args.style_dim, num_channels=args.num_channels)
-        G_T2S = CycleUnetGenerator(args.img_size, args.style_dim, num_channels=args.num_channels)
-    else:
-        raise ValueError('Base architecture should be either resnet or unet')
-
-    # For BagNet architecture (Not used. ResNet is default option)
-    BagKwargs = {
-        'stride': [2,2,2,2,2,2],
-        'kernel3x3': [1,1,1,1,0,0],
-    }
-    D_S = CycleDiscriminator(args.img_size, args.num_domains, num_channels=args.num_channels,
-                             architecture=args.D_architecture, crop=args.D_crop, **BagKwargs)
-    D_T = CycleDiscriminator(args.img_size, args.num_domains, num_channels=args.num_channels,
-                             architecture=args.D_architecture, crop=args.D_crop, **BagKwargs)
-
-    G_S2T_ema = copy.deepcopy(G_S2T)
-    G_T2S_ema = copy.deepcopy(G_T2S)
-
-    nets = Munch(
-            generator_S2T=G_S2T,
-            generator_T2S=G_T2S,
-            discriminator_S=D_S,
-            discriminator_T=D_T
-    )
-    nets_ema = Munch(generator_S2T=G_S2T_ema,
-                     generator_T2S=G_T2S_ema)
-
-    return nets, nets_ema
-
-def build_cut(args):
-    # No style encoder
-    if args.G_architecture == 'resnet':
-        raise ValueError('ResNet Generator for CUT is not available now. Please refer to original CUT repo if you want to use ResNet')
-    elif args.G_architecture == 'unet':
-        generator = CUTUnetGenerator(args.img_size, args.style_dim, num_channels=args.num_channels)
-    else:
-        raise ValueError('Base architecture should be either resnet or unet')
-
-    # For BagNet architecture (Not used. ResNet is default option)
-    BagKwargs = {
-        'stride': [2,2,2,2,2,2],
-        'kernel3x3': [1,1,1,1,0,0],
-    }
-    discriminator = CUTDiscriminator(args.img_size, args.num_domains, num_channels=args.num_channels,
-                                     architecture=args.D_architecture, crop=args.D_crop, **BagKwargs)
-    projector = PatchSampleF(nc=256, dim_in=generator.channel_list)
-
-    generator_ema = copy.deepcopy(generator)
-
-    nets = Munch(
-            generator=generator,
-            discriminator=discriminator,
-            projector=projector,
-    )
-    nets_ema = Munch(generator=generator_ema)
-
-    return nets, nets_ema

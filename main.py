@@ -7,7 +7,7 @@ from torch.backends import cudnn
 import torch
 
 from data.data_loader import get_original_loader, get_val_loader, \
-    get_aug_loader, get_concat_loader
+    get_aug_loader
 from training.augment_solver import AugmentSolver
 #from training.debias_solver import DebiasingSolver
 #from training.test_solver import TestSolver
@@ -31,15 +31,15 @@ def main(args):
         raise NotImplementedError
 
     if args.mode == 'augment':
-        loaders = Munch(unsup=get_original_loader(args, mode='unsup'),
+        loaders = Munch(unsup=get_original_loader(args, mode='unsup'), # Could be None
                         sup=get_original_loader(args, mode='sup'),
-                        concat=get_concat_loader(args),
+                        sup_dataset=get_original_loader(args, mode='sup', return_dataset=True),
                         val=get_val_loader(args))
 
         solver.augment(loaders)
 
     elif args.mode == 'debias':
-        loaders = Munch(unsup=get_aug_loader(args, mode='unsup'),
+        loaders = Munch(unsup=get_aug_loader(args, mode='unsup'), # Could be None
                         sup=get_aug_loader(args, mode='sup'),
                         val=get_val_loader(args))
 
@@ -58,13 +58,6 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-
-
-    parser.add_argument('--dim_in', type=int, default=32)
-
-
-
-
     # Data arguments
     parser.add_argument('--data', type=str, default='cmnist',
                         choices=['cmnist', 'cifar10c', 'bffhq'])
@@ -77,25 +70,38 @@ if __name__ == '__main__':
 
 
     # weight for objective functions
+    parser.add_argument('--lambda_reg', type=float, default=1)
+    parser.add_argument('--lambda_bias', type=float, default=1)
+    parser.add_argument('--lambda_debias', type=float, default=1)
+    parser.add_argument('--lambda_cyc', type=float, default=10)
 
     # training arguments
-    parser.add_argument('--bias_total_iters', type=int, default=20000,
-                        help='Number of training iterations for biasing model')
-    parser.add_argument('--vae_total_iters', type=int, default=20000,
-                        help='Number of training iterations for training vae')
+    parser.add_argument('--GAN_total_iters', type=int, default=100000,
+                        help='Number of training iterations for training GAN')
     parser.add_argument('--bias_resume_iter', type=int, default=0,
-                        help='Iterations to resume biased model')
-    parser.add_argument('--vae_resume_iter', type=int, default=0,
-                        help='Iterations to resume VAE')
-    parser.add_argument('--attack_iters', type=int, default=7)
+                        help='Iterations to resume biased model, NOT used')
+    parser.add_argument('--GAN_resume_iter', type=int, default=0,
+                        help='Iterations to resume GAN')
     parser.add_argument('--batch_size', type=int, default=256,
                         help='Batch size for training')
-    parser.add_argument('--lr', type=float, default=1e-3,
-                        help='Learning rate in util/params.py will be used')
+    parser.add_argument('--lr_G', type=float, default=1e-4,
+                        help='lr for G, E')
+    parser.add_argument('--lr_D', type=float, default=5e-4,
+                        help='lr for D')
     parser.add_argument('--weight_decay', type=float, default=1e-4,
                         help='Not used')
-    parser.add_argument('--lr_decay_step', type=int, default=10000)
+    parser.add_argument('--lr_decay_step', type=int, default=10000,
+                        help='Not used when training GAN')
     parser.add_argument('--lr_gamma', type=float, default=0.5)
+    parser.add_argument('--beta1', type=float, default=0.9)
+    parser.add_argument('--beta2', type=float, default=0.99)
+    parser.add_argument('--dim_in', type=int, default=32,
+                        help='number of channels in first hidden layer of G')
+    parser.add_argument('--style_dim', type=int, default=64,
+                        help='dimension of final style code')
+    parser.add_argument('--latent_dim', type=int, default=16,
+                        help='dimension of initial 2D domain code')
+    parser.add_argument('--g_every', type=int, default=1)
 
     # misc
     parser.add_argument('--mode', type=str, required=True,
@@ -121,9 +127,9 @@ if __name__ == '__main__':
                         help='Nametag for the experiment')
 
     # step size
-    parser.add_argument('--print_every', type=int, default=100)
+    parser.add_argument('--print_every', type=int, default=1000)
     parser.add_argument('--save_every', type=int, default=10000)
-    parser.add_argument('--eval_every', type=int, default=100)
+    parser.add_argument('--eval_every', type=int, default=1000)
 
     args = parser.parse_args()
     main(args)

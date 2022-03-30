@@ -18,10 +18,11 @@ def build_augment(args):
     if args.data == 'cmnist':
         debiased_discriminator = MLP()
         biased_discriminator = MLPDiscriminator()
-        generator = ResGenerator(iimg_size=config[args.data]['size'],
-                                 channels=config[args.data]['in_channels'],
+        generator = ResGenerator(img_size=config[args.data]['size'],
+                                 num_channels=config[args.data]['in_channels'],
                                  dim_in=args.dim_in,
-                                 style_dim=args.style_dim)
+                                 style_dim=args.style_dim,
+                                 sigmoid_output=True)
         mapping_network = MappingNetwork(args.latent_dim, args.style_dim,
                                          num_domains=config[args.data]['num_classes'])
 

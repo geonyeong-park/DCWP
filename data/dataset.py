@@ -21,10 +21,10 @@ class CMNISTDataset(Dataset):
         self.conflict_token = f'{conflict_pct}pct'
 
         if split=='train':
-            self.align = glob(os.path.join(root, self.name, self.mode_token, self.label_token, self.conflict_token,
-                                           'align',"*","*"))
-            self.conflict = glob(os.path.join(root, self.name, self.mode_token, self.label_token, self.conflict_token,
-                                           'conflict',"*","*"))
+            self.header_dir = os.path.join(root, self.name, self.mode_token, self.label_token, self.conflict_token)
+            self.align = glob(os.path.join(self.header_dir, 'align', "*", "*"))
+            self.conflict = glob(os.path.join(self.header_dir, 'conflict',"*", "*"))
+
             self.data = self.align + self.conflict
 
         elif split=='test':
@@ -64,4 +64,12 @@ class bFFHQDataset(CMNISTDataset):
                     data_conflict.append(path)
             self.data = data_conflict
 
+class IdxDataset(Dataset):
+    def __init__(self, dataset):
+        self.dataset = dataset
 
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx):
+        return (idx, *self.dataset[idx])
