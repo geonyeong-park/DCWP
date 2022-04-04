@@ -75,30 +75,47 @@ class MultiDimAverageMeter(object):
         self.cum.zero_()
         self.cnt.zero_()
 
-class EMA:
-    def __init__(self, label, num_classes=None, alpha=0.9):
-        self.label = label.cuda()
+class EMA(nn.Module):
+    def __init__(self, label_dict, num_classes=None, alpha=0.9):
+        super(EMA, self).__init__()
+
+        self.label_dict = label_dict
         self.alpha = alpha
-        self.parameter = torch.zeros(label.size(0))
-        self.updated = torch.zeros(label.size(0))
+        parameter = {}
+        updated = {}
+        for fname, v in label_dict.items():
+            parameter[fname] = torch.tensor(0.).to(v.device)
+            updated[fname] = torch.tensor(0.).to(v.device)
+        self.parameter = parameter
+        self.updated = updated
         self.num_classes = num_classes
-        self.max = torch.zeros(self.num_classes).cuda()
 
-    def update(self, data, index, curve=None, iter_range=None, step=None):
-        self.parameter = self.parameter.to(data.device)
-        self.updated = self.updated.to(data.device)
-        index = index.to(data.device)
-
+    def update(self, data, fname, curve=None, iter_range=None, step=None):
         if curve is None:
-            self.parameter[index] = self.alpha * self.parameter[index] + (1 - self.alpha * self.updated[index]) * data
+            self.parameter[fname] = self.alpha * self.parameter[fname] + (1 - self.alpha * self.updated[fname]) * data
         else:
             alpha = curve ** -(step / iter_range)
-            self.parameter[index] = alpha * self.parameter[index] + (1 - alpha * self.updated[index]) * data
-        self.updated[index] = 1
+            self.parameter[fname] = alpha * self.parameter[fname] + (1 - alpha * self.updated[fname]) * data
+        self.updated[fname] = 1
 
     def max_loss(self, label):
-        label_index = torch.where(self.label == label)[0]
-        return self.parameter[label_index].max()
+        label_index = [fname for fname, v in self.label_dict.items() if v == label]
+        params = []
+        for l in label_index:
+            params.append(self.parameter[l])
+
+        return params.max()
+
+    def save(self, save_path):
+        output = {}
+        output['parameter'] = self.parameter
+        output['label_dict'] = self.label_dict
+        torch.save(output, save_path)
+
+    def load(self, load_path):
+        output = torch.load(load_path)
+        self.parameter = output['parameter']
+        self.label_dict = output['label_dict']
 
 def moving_average_param(model, model_test, beta=0.999):
     for param, param_test in zip(model.parameters(), model_test.parameters()):

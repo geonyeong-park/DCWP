@@ -50,9 +50,10 @@ class GANSolver(BaseSolver):
     def compute_d_loss(self, nets, args, x_sup, y, y_trg, c_trg, idx):
         x_sup.requires_grad_()
 
-        logit_real, logit_b, logit_d, loss_weight = self.compute_logit_and_weight(idx, x_sup, y)
-        loss_real = adv_loss(logit_real, 1)
-        loss_reg = r1_reg(logit_real, x_sup)
+        logit_real_b, logit_real_d, logit_b, logit_d, loss_weight = self.compute_logit_and_weight(idx, x_sup, y)
+        loss_real_b = adv_loss(logit_real_b, 1)
+        loss_real_d = adv_loss(logit_real_d, 1)
+        loss_reg = r1_reg(logit_real_b, x_sup) + r1_reg(logit_real_d, x_sup)
 
         loss_b_update = self.bias_criterion(logit_b, y)
         loss_d_update = self.criterion(logit_d, y) * loss_weight.to(self.device)
@@ -64,14 +65,19 @@ class GANSolver(BaseSolver):
             s_trg = nets.mapping_network(c_trg, y_trg)
             x_fake = nets.generator(x_sup, s_trg)
 
-        logit_fake, _ = nets.biased_D(x_fake.detach())
-        loss_fake = adv_loss(logit_fake, 0)
+        logit_fake_b, _ = nets.biased_D(x_fake.detach())
+        logit_fake_d, _ = nets.debiased_D(x_fake.detach())
+        loss_fake_b = adv_loss(logit_fake_b, 0)
+        loss_fake_d = adv_loss(logit_fake_d, 0)
 
-        loss = loss_real + loss_fake + args.lambda_reg * loss_reg + \
+        loss = loss_real_b + loss_real_d + loss_fake_b + loss_fake_d + \
+            args.lambda_reg * loss_reg + \
             args.lambda_bias * loss_b + args.lambda_debias * loss_d
 
-        return loss, Munch(real=loss_real.item(),
-                           fake=loss_fake.item(),
+        return loss, Munch(real_b=loss_real_b.item(),
+                           real_d=loss_real_d.item(),
+                           fake_b=loss_fake_b.item(),
+                           fake_d=loss_fake_d.item(),
                            reg=loss_reg.item(),
                            bias=loss_b.item(),
                            debias=loss_d.item())
@@ -80,23 +86,26 @@ class GANSolver(BaseSolver):
         # adversarial loss
         s_trg = nets.mapping_network(c_trg, y_trg)
         x_fake = nets.generator(x_sup, s_trg)
-        logit_fake, logit_b = nets.biased_D(x_fake)
-        loss_adv = adv_loss(logit_fake, 1)
+        logit_fake_b, logit_b = nets.biased_D(x_fake)
+        logit_fake_d, logit_d = nets.debiased_D(x_fake)
+        loss_adv_b = adv_loss(logit_fake_b, 1)
+        loss_adv_d = adv_loss(logit_fake_d, 1)
 
         # classification loss
         loss_bias = self.criterion(logit_b, y_trg)
-        loss_debias = self.criterion(logit_b, y)
+        loss_debias = self.criterion(logit_d, y)
 
         # Target-to-original domain.
         s_src = nets.mapping_network(c_src, y)
         x_recon = nets.generator(x_fake, s_src)
         loss_cyc = torch.mean(torch.abs(x_sup - x_recon))
 
-        loss = loss_adv + args.lambda_cyc * loss_cyc \
+        loss = loss_adv_b + loss_adv_d + args.lambda_cyc * loss_cyc \
             + args.lambda_bias * loss_bias \
             + args.lambda_debias * loss_debias
 
-        return loss, Munch(adv=loss_adv.item(),
+        return loss, Munch(adv_b=loss_adv_b.item(),
+                           adv_d=loss_adv_d.item(),
                            cyc=loss_cyc.item(),
                            bias=loss_bias.item(),
                            debias=loss_debias.item())
@@ -109,14 +118,7 @@ class GANSolver(BaseSolver):
         nets_ema = self.nets_ema
         optims = self.optims
 
-        train_target_attr = []
-        for data in loaders.sup_dataset.dataset.data:
-            fname = os.path.relpath(data, loaders.sup_dataset.dataset.header_dir)
-            train_target_attr.append(int(fname.split('_')[-2]))
-        train_target_attr = torch.LongTensor(train_target_attr)
-
-        self.sample_loss_ema_b = utils.EMA(train_target_attr, num_classes=self.num_classes, alpha=0.7)
-        self.sample_loss_ema_d = utils.EMA(train_target_attr, num_classes=self.num_classes, alpha=0.7)
+        self.set_loss_ema(loaders)
 
         fetcher = InputFetcher(loaders.sup,
                                loaders.unsup,
@@ -124,6 +126,7 @@ class GANSolver(BaseSolver):
                                mode='augment',
                                latent_dim=args.latent_dim,
                                num_classes=self.num_classes)
+        fetcher_val = loaders.val
 
         start_time = time.time()
 
@@ -140,7 +143,7 @@ class GANSolver(BaseSolver):
                 elapsed = time.time() - start_time
                 elapsed = str(datetime.timedelta(seconds=elapsed))[:-7]
                 log = "Elapsed time [%s], Iteration [%i/%i], LR [%f]" % (elapsed, i+1, args.GAN_total_iters,
-                                                                       self.scheduler.generator.get_lr()[0])
+                                                                       self.scheduler.biased_D.get_lr()[0])
                 all_losses = dict()
                 for loss, prefix in zip([d_losses_latent, g_losses_latent],
                                         ['D/', 'G/']):
@@ -154,6 +157,9 @@ class GANSolver(BaseSolver):
                 print(args.data)
                 utils.debug_image(nets_ema, args, inputs, i,
                                   denormalize=False if args.data == 'cmnist' else True)
+                valid_attrwise_acc_b, valid_attrwise_acc_d = self.validation_D(fetcher_val)
+                self.report_validation(valid_attrwise_acc_b, i, which='bias')
+                self.report_validation(valid_attrwise_acc_d, i, which='debias')
 
             if (i+1) % args.save_every == 0:
                 self._save_checkpoint(step=i+1, token='GAN')

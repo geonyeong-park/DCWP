@@ -79,6 +79,10 @@ class BaseSolver(nn.Module):
         for ckptio in self.ckptios:
             ckptio.save(step, token)
 
+    def _save_loss_weight(self, step, ema, token='bias'):
+        save_path = ospj(self.args.checkpoint_dir, '{:06d}_EMA_{}_.ckpt'.format(step, token))
+        ema.save(save_path)
+
     def _load_checkpoint(self, step, token, which=None):
         for ckptio in self.ckptios:
             ckptio.load(step, token, which)
@@ -100,7 +104,7 @@ class BaseSolver(nn.Module):
                 pred = logit.data.max(1, keepdim=True)[1].squeeze(1)
                 correct = (pred == label).long()
 
-                logit_d = self.nets.debiased_D(data)
+                _, logit_d = self.nets.debiased_D(data)
                 pred_d = logit_d.data.max(1, keepdim=True)[1].squeeze(1)
                 correct_d = (pred_d == label).long()
 
@@ -115,14 +119,30 @@ class BaseSolver(nn.Module):
         self.nets.debiased_D.train()
         return accs_b, accs_d
 
+    def report_validation(self, valid_attrwise_acc, step, which='bias'):
+        valid_acc = torch.mean(valid_attrwise_acc).item()
+
+        eye_tsr = torch.eye(self.attr_dims[0]).long()
+        valid_acc_align = valid_attrwise_acc[eye_tsr == 1].mean().item()
+        valid_acc_conflict = valid_attrwise_acc[eye_tsr == 0].mean().item()
+
+        all_acc = dict()
+        for acc, key in zip([valid_acc, valid_acc_align, valid_acc_conflict],
+                                ['Acc/total', 'Acc/align', 'Acc/conflict']):
+            all_acc[key] = acc
+        log = f"({which} Validation) Iteration [{step+1}], "
+        log += ' '.join(['%s: [%.4f]' % (key, value) for key, value in all_acc.items()])
+        print(log)
+        logging.info(log)
+
     def compute_biased_loss(self, x, label):
         _, pred = self.nets.biased_D(x)
         loss_GCE = self.bias_criterion(pred, label).mean()
         return loss_GCE
 
-    def compute_logit_and_weight(self, index, x, label):
-        logit_real, logit_b = self.nets.biased_D(x)
-        logit_d = self.nets.debiased_D(x)
+    def compute_logit_and_weight(self, fname, x, label):
+        logit_real_b, logit_b = self.nets.biased_D(x)
+        logit_real_d, logit_d = self.nets.debiased_D(x)
 
         loss_b = self.criterion(logit_b, label).cpu().detach()
         loss_d = self.criterion(logit_d, label).cpu().detach()
@@ -131,12 +151,12 @@ class BaseSolver(nn.Module):
         loss_per_sample_d = loss_d
 
         # EMA sample loss
-        self.sample_loss_ema_b.update(loss_b, index)
-        self.sample_loss_ema_d.update(loss_d, index)
+        self.sample_loss_ema_b.update(loss_b, fname)
+        self.sample_loss_ema_d.update(loss_d, fname)
 
         # class-wise normalize
-        loss_b = self.sample_loss_ema_b.parameter[index].clone().detach()
-        loss_d = self.sample_loss_ema_d.parameter[index].clone().detach()
+        loss_b = self.sample_loss_ema_b.parameter[fname].clone().detach()
+        loss_d = self.sample_loss_ema_d.parameter[fname].clone().detach()
 
         label_cpu = label.cpu()
 
@@ -152,7 +172,17 @@ class BaseSolver(nn.Module):
         if np.isnan(loss_weight.mean().item()):
             raise NameError('loss_weight')
 
-        return logit_real, logit_b, logit_d, loss_weight
+        return logit_real_b, logit_real_d, logit_b, logit_d, loss_weight
+
+    def set_loss_ema(self, loaders):
+        train_target_attr = {}
+        for data in loaders.sup_dataset.dataset.data:
+            fname = os.path.relpath(data, loaders.sup_dataset.dataset.header_dir)
+            label = torch.LongTensor(int(fname.split('_')[-2])).to(self.device)
+            train_target_attr[data] = label
+
+        self.sample_loss_ema_b = utils.EMA(train_target_attr, num_classes=self.num_classes, alpha=0.7)
+        self.sample_loss_ema_d = utils.EMA(train_target_attr, num_classes=self.num_classes, alpha=0.7)
 
     def train_biased_model(self, loaders):
         """ NOT used """
@@ -166,16 +196,24 @@ class BaseSolver(nn.Module):
                                mode='augment')
         fetcher_val = loaders.val
         start_time = time.time()
+        self.set_loss_ema(loaders)
 
         for i in range(args.bias_total_iters):
             # fetch images and labels
             inputs = next(fetcher)
-            x_sup, label = inputs.x_sup, inputs.y
+            idx, x_sup, label, fname = inputs.index, inputs.x_sup, inputs.y, inputs.fname_sup
 
-            loss_GCE = self.compute_biased_loss(x_sup, label)
-            optims.biased_model.zero_grad()
-            loss_GCE.backward()
-            optims.biased_model.step()
+            logit_real_b, logit_real_d, logit_b, logit_d, loss_weight = self.compute_logit_and_weight(fname, x_sup, label)
+            loss_b_update = self.bias_criterion(logit_b, label)
+            loss_d_update = self.criterion(logit_d, label) * loss_weight.to(self.device)
+            loss_b = loss_b_update.mean()
+            loss_d = loss_d_update.mean()
+            loss = loss_b + loss_d
+
+            self._reset_grad()
+            loss.backward()
+            optims.biased_D.step()
+            optims.debiased_D.step()
 
             # print out log info
             if (i+1) % args.print_every == 0:
@@ -184,7 +222,7 @@ class BaseSolver(nn.Module):
                 log = "Elapsed time [%s], Iteration [%i/%i], LR [%.4f]" % (elapsed, i+1, args.bias_total_iters,
                                                                            self.scheduler.biased_model.get_lr()[0])
                 all_losses = dict()
-                for loss, key in zip([loss_GCE.item()], ['GCE/']):
+                for loss, key in zip([loss_b.item(), loss_d.item()], ['Biased/', 'Debiased/']):
                     all_losses[key] = loss
                 log += ' '.join(['%s: [%.8f]' % (key, value) for key, value in all_losses.items()])
                 print(log)
@@ -193,23 +231,13 @@ class BaseSolver(nn.Module):
             # save model checkpoints
             if (i+1) % args.save_every == 0:
                 self._save_checkpoint(step=i+1, token='bias')
+                self._save_loss_weight(step=i+1, ema=self.sample_loss_ema_b, token='bias')
+                self._save_loss_weight(step=i+1, ema=self.sample_loss_ema_d, token='debias')
 
             if (i+1) % args.eval_every == 0:
-                valid_attrwise_acc = self.validation_D(fetcher_val)
-                valid_acc = torch.mean(valid_attrwise_acc).item()
-
-                eye_tsr = torch.eye(self.attr_dims[0]).long()
-                valid_acc_align = valid_attrwise_acc[eye_tsr == 1].mean().item()
-                valid_acc_conflict = valid_attrwise_acc[eye_tsr == 0].mean().item()
-
-                all_acc = dict()
-                for acc, key in zip([valid_acc, valid_acc_align, valid_acc_conflict],
-                                     ['Acc/total', 'Acc/align', 'Acc/conflict']):
-                    all_acc[key] = acc
-                log = "(Validation) Iteration [%i/%i], " % (i+1, args.bias_total_iters)
-                log += ' '.join(['%s: [%.4f]' % (key, value) for key, value in all_acc.items()])
-                print(log)
-                logging.info(log)
+                valid_attrwise_acc_b, valid_attrwise_acc_d = self.validation_D(fetcher_val)
+                self.report_validation(self, valid_attrwise_acc_b, i, which='bias')
+                self.report_validation(self, valid_attrwise_acc_d, i, which='debias')
 
             self.scheduler.biased_model.step()
 

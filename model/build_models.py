@@ -16,7 +16,7 @@ def build_model(args):
 def build_augment(args):
     # Generative model for augmentation, biased model, GAN discriminator (if need)
     if args.data == 'cmnist':
-        debiased_discriminator = MLP()
+        debiased_discriminator = MLPDiscriminator()
         biased_discriminator = MLPDiscriminator()
         generator = ResGenerator(img_size=config[args.data]['size'],
                                  num_channels=config[args.data]['in_channels'],
