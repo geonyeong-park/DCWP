@@ -8,8 +8,7 @@ import torch
 
 from data.data_loader import get_original_loader, get_val_loader, \
     get_aug_loader
-from training.augment_solver import AugmentSolver
-#from training.debias_solver import DebiasingSolver
+from training.debias_solver import DebiasSolver
 #from training.test_solver import TestSolver
 from util import setup, save_config
 
@@ -21,29 +20,20 @@ def main(args):
     cudnn.benchmark = True
     torch.manual_seed(args.seed)
 
-    if args.mode == 'augment':
-        solver = AugmentSolver(args)
-    elif args.mode == 'debias':
-        solver = DebiasingSolver(args)
+    if args.mode == 'debias':
+        solver = DebiasSolver(args)
     elif args.mode == 'test':
         solver = TestSolver(args)
     else:
         raise NotImplementedError
 
-    if args.mode == 'augment':
+    if args.mode == 'debias':
         loaders = Munch(unsup=get_original_loader(args, mode='unsup'), # Could be None
                         sup=get_original_loader(args, mode='sup'),
                         sup_dataset=get_original_loader(args, mode='sup', return_dataset=True),
                         val=get_val_loader(args))
 
-        solver.augment(loaders)
-
-    elif args.mode == 'debias':
-        loaders = Munch(unsup=get_aug_loader(args, mode='unsup'), # Could be None
-                        sup=get_aug_loader(args, mode='sup'),
-                        val=get_val_loader(args))
-
-        solver.debias(loaders)
+        solver.train(loaders)
 
     elif args.mode == 'test':
         loaders = Munch(val=get_val_loader(args))
@@ -65,29 +55,23 @@ if __name__ == '__main__':
                         help='Ratio of labeled data')
     parser.add_argument('--use_unsup_data', default=False, action='store_true',
                         help='If labeled_ratio < 1, use_unsup_data=True. Otherwise False. See util.__init__')
-    parser.add_argument('--conflict_pct', type=float, default=1., choices=[0.5,1.,2.,5.],
+    parser.add_argument('--conflict_pct', type=float, default=1., choices=[0.5, 1., 2., 5.],
                         help='Percent of bias-conflicting data')
 
-
     # weight for objective functions
-    parser.add_argument('--lambda_reg', type=float, default=1)
-    parser.add_argument('--lambda_bias', type=float, default=1)
-    parser.add_argument('--lambda_debias', type=float, default=1)
-    parser.add_argument('--lambda_cyc', type=float, default=10)
+    parser.add_argument('--lambda_swap', type=float, default=1)
+    parser.add_argument('--lambda_dis_align', type=float, default=10)
+    parser.add_argument('--lambda_swap_align', type=float, default=10)
 
     # training arguments
-    parser.add_argument('--GAN_total_iters', type=int, default=100000,
-                        help='Number of training iterations for training GAN')
-    parser.add_argument('--bias_resume_iter', type=int, default=0,
-                        help='Iterations to resume biased model, NOT used')
-    parser.add_argument('--GAN_resume_iter', type=int, default=0,
-                        help='Iterations to resume GAN')
+    parser.add_argument('--total_iters', type=int, default=50000,
+                        help='Number of training iterations for training')
+    parser.add_argument('--swap_iter', type=int, default=10000,
+                        help='Number of training iterations for swap augmentation')
+    parser.add_argument('--resume_iter', type=int, default=0)
     parser.add_argument('--batch_size', type=int, default=256,
                         help='Batch size for training')
-    parser.add_argument('--lr_G', type=float, default=1e-4,
-                        help='lr for G, E')
-    parser.add_argument('--lr_D', type=float, default=5e-4,
-                        help='lr for D')
+    parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--weight_decay', type=float, default=1e-4,
                         help='Not used')
     parser.add_argument('--lr_decay_step', type=int, default=10000,
@@ -95,21 +79,10 @@ if __name__ == '__main__':
     parser.add_argument('--lr_gamma', type=float, default=0.5)
     parser.add_argument('--beta1', type=float, default=0.9)
     parser.add_argument('--beta2', type=float, default=0.99)
-    parser.add_argument('--dim_in', type=int, default=32,
-                        help='number of channels in first hidden layer of G')
-    parser.add_argument('--style_dim', type=int, default=64,
-                        help='dimension of final style code')
-    parser.add_argument('--latent_dim', type=int, default=16,
-                        help='dimension of initial 2D domain code')
-    parser.add_argument('--g_every', type=int, default=1)
 
     # misc
     parser.add_argument('--mode', type=str, required=True,
-                        choices=['augment', 'debias', 'test'],
-                        help='''This argument is used in solver.
-                        augment: pre-train or load VAE+biased_model. Do adversarial augmentation.
-                        debias: Debias main model with augmented images.
-                        test: evaluate performance''')
+                        choices=['debias', 'test'])
     parser.add_argument('--num_workers', type=int, default=4,
                         help='Number of workers used in DataLoader')
     parser.add_argument('--seed', type=int, default=7777,

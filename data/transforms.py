@@ -11,13 +11,10 @@ transforms = {
     'original': {
         "cmnist": {
             "train": T.Compose([
-                T.Resize((32,32)),
                 T.ToTensor()]),
             "valid": T.Compose([
-                T.Resize((32,32)),
                 T.ToTensor()]),
             "test": T.Compose([
-                T.Resize((32,32)),
                 T.ToTensor()])
             },
         "bffhq": {
