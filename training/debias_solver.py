@@ -38,7 +38,8 @@ class DebiasSolver(nn.Module):
             self.optims[net] = torch.optim.Adam(
                 params=self.nets[net].parameters(),
                 lr=args.lr,
-                betas=(args.beta1, args.beta2)
+                betas=(args.beta1, args.beta2),
+                weight_decay=0
             )
 
         # LR decaying: not used when training GAN
@@ -74,13 +75,17 @@ class DebiasSolver(nn.Module):
         for ckptio in self.ckptios:
             ckptio.load(step, token, which)
 
-    def validation(self, fetcher):
+    def validation(self, fetcher, swap=False):
         self.nets.biased.eval()
         self.nets.debiased.eval()
 
         attrwise_acc_meter_bias = MultiDimAverageMeter(self.attr_dims)
         attrwise_acc_meter_debias = MultiDimAverageMeter(self.attr_dims)
         iterator = enumerate(fetcher)
+
+        total_correct, total_num = 0, 0
+        total_correct_b, total_num_b = 0, 0
+        total_correct_b_bias, total_num_b_bias = 0, 0
 
         for index, (_, data, attr, fname) in iterator:
             label = attr[:, 0].to(self.device)
@@ -90,9 +95,9 @@ class DebiasSolver(nn.Module):
                 z_l = self.nets.debiased.extract(data)
                 z_b = self.nets.biased.extract(data)
 
-                z_origin = torch.cat((z_l, z_b), dim=1)
-                logit = self.nets.debiased.fc(z_origin)
-                logit_b = self.nets.biased.fc(z_origin)
+                z = torch.cat((z_l, z_b), dim=1)
+                logit = self.nets.debiased.fc(z)
+                logit_b = self.nets.biased.fc(z)
 
                 pred = logit.data.max(1, keepdim=True)[1].squeeze(1)
                 pred_b = logit_b.data.max(1, keepdim=True)[1].squeeze(1)
@@ -100,20 +105,27 @@ class DebiasSolver(nn.Module):
                 correct = (pred == label).long()
                 correct_b = (pred_b == label).long()
 
+                total_correct += correct.sum()
+                total_num += correct.shape[0]
+                total_correct_b += correct_b.sum()
+                total_num_b += correct_b.shape[0]
+
             attr = attr[:, [0, 1]]
             attrwise_acc_meter_bias.add(correct_b.cpu(), attr.cpu())
             attrwise_acc_meter_debias.add(correct.cpu(), attr.cpu())
+
+        total_acc_d = total_correct/float(total_num)
+        total_acc_b = total_correct_b/float(total_num_b)
 
         accs_b = attrwise_acc_meter_bias.get_mean()
         accs_d = attrwise_acc_meter_debias.get_mean()
 
         self.nets.biased.train()
         self.nets.debiased.train()
-        return accs_b, accs_d
 
-    def report_validation(self, valid_attrwise_acc, step, which='bias'):
-        valid_acc = torch.mean(valid_attrwise_acc).item()
+        return total_acc_b, total_acc_d, accs_b, accs_d
 
+    def report_validation(self, valid_attrwise_acc, valid_acc, step, which='bias'):
         eye_tsr = torch.eye(self.attr_dims[0]).long()
         valid_acc_align = valid_attrwise_acc[eye_tsr == 1].mean().item()
         valid_acc_conflict = valid_attrwise_acc[eye_tsr == 0].mean().item()
@@ -247,6 +259,7 @@ class DebiasSolver(nn.Module):
                     all_losses[key] = loss
                 log += ' '.join(['%s: [%f]' % (key, value) for key, value in all_losses.items()])
                 print(log)
+                print('Average Loss weight:', loss_weight.mean().item())
                 logging.info(log)
 
             # save model checkpoints
@@ -254,9 +267,9 @@ class DebiasSolver(nn.Module):
                 self._save_checkpoint(step=i+1, token='debias')
 
             if (i+1) % args.eval_every == 0:
-                valid_attrwise_acc_b, valid_attrwise_acc_d = self.validation(fetcher_val)
-                self.report_validation(valid_attrwise_acc_b, i, which='bias')
-                self.report_validation(valid_attrwise_acc_d, i, which='debias')
+                total_acc_b, total_acc_d, valid_attrwise_acc_b, valid_attrwise_acc_d = self.validation(fetcher_val)
+                self.report_validation(valid_attrwise_acc_b, total_acc_b, i, which='bias')
+                self.report_validation(valid_attrwise_acc_d, total_acc_d, i, which='debias')
 
             if i+1 >= args.swap_iter:
                 self.scheduler.biased.step()

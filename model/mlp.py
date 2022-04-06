@@ -18,6 +18,11 @@ class MLP(BaseModel):
         )
 
     def extract(self, x):
-        x = x.view(x.size(0), -1)
+        x = x.view(x.size(0), -1) / 255
         return self.feature(x)
+
+class FC(nn.Module):
+    def __init__(self, last_dim, num_classes=10, simclr_dim=128):
+        super(FC, self).__init__()
+        self.fc = nn.Linear(last_dim, num_classes)
 
