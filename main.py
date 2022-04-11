@@ -9,6 +9,7 @@ import torch
 from data.data_loader import get_original_loader, get_val_loader, \
     get_aug_loader
 from training.debias_solver import DebiasSolver
+from training.contra_solver import ContraSolver
 #from training.test_solver import TestSolver
 from util import setup, save_config
 
@@ -20,14 +21,16 @@ def main(args):
     cudnn.benchmark = True
     torch.manual_seed(args.seed)
 
-    if args.mode == 'debias':
+    if args.mode == 'FeatureSwap':
         solver = DebiasSolver(args)
+    elif args.mode == 'ours':
+        solver = ContraSolver(args)
     elif args.mode == 'test':
         solver = TestSolver(args)
     else:
         raise NotImplementedError
 
-    if args.mode == 'debias':
+    if args.mode == 'FeatureSwap' or args.mode == 'ours':
         loaders = Munch(unsup=get_original_loader(args, mode='unsup'), # Could be None
                         sup=get_original_loader(args, mode='sup'),
                         sup_dataset=get_original_loader(args, mode='sup', return_dataset=True),
@@ -43,7 +46,6 @@ def main(args):
         print_scores(args, solver.metrics)
     else:
         raise NotImplementedError
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -62,6 +64,7 @@ if __name__ == '__main__':
     parser.add_argument('--lambda_swap', type=float, default=1)
     parser.add_argument('--lambda_dis_align', type=float, default=10)
     parser.add_argument('--lambda_swap_align', type=float, default=10)
+    parser.add_argument('--lambda_contra', type=float, default=0.01)
 
     # training arguments
     parser.add_argument('--total_iters', type=int, default=50000,
@@ -82,7 +85,7 @@ if __name__ == '__main__':
 
     # misc
     parser.add_argument('--mode', type=str, required=True,
-                        choices=['debias', 'test'])
+                        choices=['FeatureSwap', 'ours', 'test'])
     parser.add_argument('--num_workers', type=int, default=4,
                         help='Number of workers used in DataLoader')
     parser.add_argument('--seed', type=int, default=7777,

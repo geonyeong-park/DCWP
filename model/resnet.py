@@ -11,8 +11,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from model.base_model import BaseModel
-
 def conv3x3(in_planes, out_planes, stride=1):
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=1, bias=False)
 
@@ -124,13 +122,15 @@ class PreActBottleneck(nn.Module):
         return out
 
 
-class ResNet(BaseModel):
+class ResNet(nn.Module):
+    last_dim = 512 * 2
+    simclr_dim = 512
+
     def __init__(self, block, num_blocks, num_classes=10):
-        last_dim = 512 * block.expansion * 2
-        super(ResNet, self).__init__(last_dim, num_classes)
+        super(ResNet, self).__init__()
 
         self.in_planes = 64
-        self.last_dim = last_dim
+        self.last_dim = ResNet.last_dim
 
         self.conv1 = conv3x3(3, 64)
         self.bn1 = nn.BatchNorm2d(64)

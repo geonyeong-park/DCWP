@@ -76,8 +76,10 @@ class DebiasSolver(nn.Module):
             ckptio.load(step, token, which)
 
     def validation(self, fetcher, swap=False):
-        self.nets.biased.eval()
-        self.nets.debiased.eval()
+        self.nets.biased_F.eval()
+        self.nets.debiased_F.eval()
+        self.nets.biased_C.eval()
+        self.nets.debiased_C.eval()
 
         attrwise_acc_meter_bias = MultiDimAverageMeter(self.attr_dims)
         attrwise_acc_meter_debias = MultiDimAverageMeter(self.attr_dims)
@@ -92,12 +94,12 @@ class DebiasSolver(nn.Module):
             data = data.to(self.device)
 
             with torch.no_grad():
-                z_l = self.nets.debiased.extract(data)
-                z_b = self.nets.biased.extract(data)
+                z_l = self.nets.debiased_F.extract(data)
+                z_b = self.nets.biased_F.extract(data)
 
                 z = torch.cat((z_l, z_b), dim=1)
-                logit = self.nets.debiased.fc(z)
-                logit_b = self.nets.biased.fc(z)
+                logit = self.nets.debiased_C(z)
+                logit_b = self.nets.biased_C(z)
 
                 pred = logit.data.max(1, keepdim=True)[1].squeeze(1)
                 pred_b = logit_b.data.max(1, keepdim=True)[1].squeeze(1)
@@ -120,8 +122,10 @@ class DebiasSolver(nn.Module):
         accs_b = attrwise_acc_meter_bias.get_mean()
         accs_d = attrwise_acc_meter_debias.get_mean()
 
-        self.nets.biased.train()
-        self.nets.debiased.train()
+        self.nets.biased_F.train()
+        self.nets.debiased_F.train()
+        self.nets.biased_C.train()
+        self.nets.debiased_C.train()
 
         return total_acc_b, total_acc_d, accs_b, accs_d
 
@@ -150,16 +154,16 @@ class DebiasSolver(nn.Module):
         self.sample_loss_ema_d = utils.EMA(train_target_attr, num_classes=self.num_classes, alpha=0.7)
 
     def compute_dis_loss(self, x_sup, idx, label):
-        z_l = self.nets.debiased.extract(x_sup)
-        z_b = self.nets.biased.extract(x_sup)
+        z_l = self.nets.debiased_F.extract(x_sup)
+        z_b = self.nets.biased_F.extract(x_sup)
 
         # Gradients of z_b are not backpropagated to z_l (and vice versa) in order to guarantee disentanglement of representation.
         z_conflict = torch.cat((z_l, z_b.detach()), dim=1)
         z_align = torch.cat((z_l.detach(), z_b), dim=1)
 
         # Prediction using z=[z_l, z_b]
-        pred_conflict = self.nets.debiased.fc(z_conflict)
-        pred_align = self.nets.biased.fc(z_align)
+        pred_conflict = self.nets.debiased_C(z_conflict)
+        pred_align = self.nets.biased_C(z_align)
 
         loss_dis_conflict = self.criterion(pred_conflict, label).detach()
         loss_dis_align = self.criterion(pred_align, label).detach()
@@ -199,8 +203,8 @@ class DebiasSolver(nn.Module):
         z_mix_align = torch.cat((z_l.detach(), z_b_swap), dim=1)
 
         # Prediction using z_swap
-        pred_mix_conflict = self.nets.debiased.fc(z_mix_conflict)
-        pred_mix_align = self.nets.biased.fc(z_mix_align)
+        pred_mix_conflict = self.nets.debiased_C(z_mix_conflict)
+        pred_mix_align = self.nets.biased_C(z_mix_align)
 
         loss_swap_conflict = self.criterion(pred_mix_conflict, label) * loss_weight.to(self.device)     # Eq.3 W(z)CE(C_i(z_swap),y)
         loss_swap_align = self.bias_criterion(pred_mix_align, label_swap)                               # Eq.3 GCE(C_b(z_swap),y tilde)
@@ -208,15 +212,14 @@ class DebiasSolver(nn.Module):
         return z_b_swap, label_swap, loss_swap_conflict, loss_swap_align
 
     def train(self, loaders):
-        """ NOT used """
-        logging.info('=== Start training biased model ===')
+        logging.info('=== Start training ===')
         args = self.args
         nets = self.nets
         optims = self.optims
 
         fetcher = InputFetcher(loaders.sup, loaders.unsup,
                                use_unsup_data=args.use_unsup_data,
-                               mode='augment')
+                               mode='FeatureSwap')
         fetcher_val = loaders.val
         start_time = time.time()
         self.set_loss_ema(loaders)
@@ -232,8 +235,8 @@ class DebiasSolver(nn.Module):
                 z_b_swap, label_swap, loss_swap_conflict, loss_swap_align = self.compute_swap_loss(z_b, z_l, label, loss_weight)
             else:
                 # before feature-level augmentation
-                loss_swap_conflict = torch.tensor([0]).float()
-                loss_swap_align = torch.tensor([0]).float()
+                loss_swap_conflict = torch.tensor([0]).float().to(self.device)
+                loss_swap_align = torch.tensor([0]).float().to(self.device)
 
             loss_dis  = loss_dis_conflict.mean() + args.lambda_dis_align * loss_dis_align.mean()                # Eq.2 L_dis
             loss_swap = loss_swap_conflict.mean() + args.lambda_swap_align * loss_swap_align.mean()             # Eq.3 L_swap
@@ -241,15 +244,17 @@ class DebiasSolver(nn.Module):
 
             self._reset_grad()
             loss.backward()
-            optims.biased.step()
-            optims.debiased.step()
+            optims.biased_F.step()
+            optims.debiased_F.step()
+            optims.biased_C.step()
+            optims.debiased_C.step()
 
             # print out log info
             if (i+1) % args.print_every == 0:
                 elapsed = time.time() - start_time
                 elapsed = str(datetime.timedelta(seconds=elapsed))[:-7]
                 log = "Elapsed time [%s], Iteration [%i/%i], LR [%.4f]" % (elapsed, i+1, args.total_iters,
-                                                                           optims.biased.param_groups[-1]['lr'])
+                                                                           optims.biased_F.param_groups[-1]['lr'])
 
                 all_losses = dict()
                 for loss, key in zip([loss_dis_conflict.mean().item(), loss_dis_align.mean().item(),
@@ -272,6 +277,8 @@ class DebiasSolver(nn.Module):
                 self.report_validation(valid_attrwise_acc_d, total_acc_d, i, which='debias')
 
             if i+1 >= args.swap_iter:
-                self.scheduler.biased.step()
-                self.scheduler.debiased.step()
+                self.scheduler.biased_F.step()
+                self.scheduler.debiased_F.step()
+                self.scheduler.biased_C.step()
+                self.scheduler.debiased_C.step()
 

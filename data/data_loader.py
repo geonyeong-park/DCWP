@@ -124,7 +124,7 @@ class InputFetcher:
         return out
 
     def __next__(self):
-        if self.mode == 'augment':
+        if self.mode == 'FeatureSwap' or self.mode == 'ours':
             idx, x, attr, fname = self._fetch_sup()
             y = attr[:, 0]
             bias_label = attr[:, 1]
@@ -144,9 +144,6 @@ class InputFetcher:
                 inputs = Munch(index=idx, x_sup=x, y=y, bias_label=bias_label,
                                fname_sup=fname,
                                y_trg=y_trg, c_trg=c_trg, c_src=c_src)
-
-        elif self.mode == 'debias':
-            pass #TODO: align (original, augment) dataset and sampling
 
         elif self.mode == 'test':
             idx, x, attr, fname = self._fetch_sup()
