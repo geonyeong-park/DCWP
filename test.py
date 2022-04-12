@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import argparse
 
 
 class EMA(nn.Module):
@@ -43,3 +44,12 @@ t = torch.load('test.pth')
 print(t)
 
 
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+
+    # Data arguments
+    parser.add_argument('--data', type=str, default='cmnist',
+                        choices=['cmnist', 'cifar10c', 'bffhq'])
+    args = parser.parse_args()
+    setattr(args, 'holy', 1)
+    print(args.holy==1)

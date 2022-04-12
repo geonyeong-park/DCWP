@@ -91,62 +91,36 @@ class InputFetcher:
 
     def _fetch_sup(self):
         try:
-            idx, x, attr, fname = next(self.iter) # attr: (class_label, bias_label)
+            idx, x, attr, fname, pseudo_label = next(self.iter) # attr: (class_label, bias_label)
         except (AttributeError, StopIteration):
             self.iter = iter(self.loader_sup)
-            idx, x, attr, fname = next(self.iter)
-        return idx, x, attr, fname
+            idx, x, attr, fname, pseudo_label = next(self.iter)
+        return idx, x, attr, fname, pseudo_label
 
     def _fetch_unsup(self):
         try:
-            idx, x, attr, fname = next(self.iter_unsup) # attr is not allowed to be used in training
+            idx, x, attr, fname, pseudo_label = next(self.iter_unsup) # attr is not allowed to be used in training
         except (AttributeError, StopIteration):
             self.iter_unsup = iter(self.loader_unsup)
-            idx, x, attr, fname  = next(self.iter_unsup)
-        return idx, x, attr, fname
-
-    def _shuffle_domain_label(self, y):
-        return y[torch.randperm(len(y))]
-
-    def _label2onehot(self, labels, num_domain, latent_dim):
-        """Convert label indices to one-hot vectors.
-        @param labels: (N,) domain (class) labels
-        @param latent_dim: int, width of output vector
-
-        output: (N, num_domain, latent_dim, latent_dim) one-hot encoded domain labels
-        """
-        batch_size = labels.size(0)
-        out = torch.zeros(batch_size, num_domain)
-        out[range(batch_size), labels.long()] = 1
-
-        out = out.view(out.size(0), out.size(1), 1, 1)
-        out = out.repeat(1, 1, latent_dim, latent_dim)
-        return out
+            idx, x, attr, fname, pseudo_label  = next(self.iter_unsup)
+        return idx, x, attr, fname, pseudo_label
 
     def __next__(self):
-        if self.mode == 'FeatureSwap' or self.mode == 'ours':
-            idx, x, attr, fname = self._fetch_sup()
+        if self.mode == 'augment' or self.mode == 'debias':
+            idx, x, attr, fname, pseudo_label = self._fetch_sup()
             y = attr[:, 0]
             bias_label = attr[:, 1]
 
-            y_trg = self._shuffle_domain_label(y)
-
-            c_trg = self._label2onehot(y_trg, self.num_classes, self.latent_dim)
-            c_src = self._label2onehot(y, self.num_classes, self.latent_dim)
-
             if self.use_unsup_data:
-                _, x_u, attr_u, fname_u = self._fetch_unsup()
+                _, x_u, attr_u, fname_u, _ = self._fetch_unsup()
                 inputs = Munch(index=idx, x_sup=x, y=y, bias_label=bias_label,
-                               fname_sup=fname,
-                               y_trg=y_trg, c_trg=c_trg, c_src=c_src,
+                               pseudo_label=pseudo_label, fname_sup=fname,
                                x_unsup=x_u, attr_unsup=attr_u, fname_unsup=fname_u)
             else:
                 inputs = Munch(index=idx, x_sup=x, y=y, bias_label=bias_label,
-                               fname_sup=fname,
-                               y_trg=y_trg, c_trg=c_trg, c_src=c_src)
-
+                               pseudo_label=pseudo_label, fname_sup=fname)
         elif self.mode == 'test':
-            idx, x, attr, fname = self._fetch_sup()
+            idx, x, attr, fname, _ = self._fetch_sup()
             inputs = Munch(index=idx, x_sup=x, attr_sup=attr, fname_sup=fname)
         else:
             raise NotImplementedError

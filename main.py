@@ -9,7 +9,7 @@ import torch
 from data.data_loader import get_original_loader, get_val_loader, \
     get_aug_loader
 from training.debias_solver import DebiasSolver
-from training.contra_solver import ContraSolver
+from training.augment_solver import AugmentSolver
 #from training.test_solver import TestSolver
 from util import setup, save_config
 
@@ -21,16 +21,18 @@ def main(args):
     cudnn.benchmark = True
     torch.manual_seed(args.seed)
 
-    if args.mode == 'FeatureSwap':
+    if args.mode == 'debias':
         solver = DebiasSolver(args)
-    elif args.mode == 'ours':
-        solver = ContraSolver(args)
+    elif args.mode == 'augment':
+        solver = AugmentSolver(args)
     elif args.mode == 'test':
         solver = TestSolver(args)
     else:
         raise NotImplementedError
 
-    if args.mode == 'FeatureSwap' or args.mode == 'ours':
+    #TODO: if pseudo_label file does not exists, train biased model first
+
+    if args.mode == 'augment':
         loaders = Munch(unsup=get_original_loader(args, mode='unsup'), # Could be None
                         sup=get_original_loader(args, mode='sup'),
                         sup_dataset=get_original_loader(args, mode='sup', return_dataset=True),
@@ -82,10 +84,21 @@ if __name__ == '__main__':
     parser.add_argument('--lr_gamma', type=float, default=0.5)
     parser.add_argument('--beta1', type=float, default=0.9)
     parser.add_argument('--beta2', type=float, default=0.99)
+    parser.add_argument('--dim_in', type=int, default=32,
+                        help='number of channels in first hidden layer of G')
+    parser.add_argument('--style_dim', type=int, default=128,
+                        help='dimension of final style code')
+    parser.add_argument('--mapping_latent_dim', type=int, default=128,
+                        help='dimension of z for mapping network')
+    parser.add_argument('--class_embed_dim', type=int, default=128,
+                        help='dimension of class embedding')
+    parser.add_argument('--channel_base_G', type=int, default=2048)
+    parser.add_argument('--channel_base_D', type=int, default=2048)
+    parser.add_argument('--g_every', type=int, default=1)
 
     # misc
     parser.add_argument('--mode', type=str, required=True,
-                        choices=['FeatureSwap', 'ours', 'test'])
+                        choices=['debias', 'augment', 'test'])
     parser.add_argument('--num_workers', type=int, default=4,
                         help='Number of workers used in DataLoader')
     parser.add_argument('--seed', type=int, default=7777,

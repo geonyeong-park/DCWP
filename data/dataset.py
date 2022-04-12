@@ -40,7 +40,8 @@ class CMNISTDataset(Dataset):
         if self.transform is not None:
             image = self.transform(image)
 
-        return image, attr, self.data[index] # attr=(class_label, bias_label)
+        #TODO: Return true pseudo bias-or-not label
+        return image, attr, self.data[index], None # attr=(class_label, bias_label)
 
 class CIFAR10Dataset(CMNISTDataset):
     def __init__(self, root, name='cmnist', split='train', mode='sup', use_unsup_data=True, transform=None,

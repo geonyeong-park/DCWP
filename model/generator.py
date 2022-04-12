@@ -126,189 +126,177 @@ Networks
 """
 
 class ResGenerator(nn.Module):
-    def __init__(self, img_size=128, dim_in=32, style_dim=64, max_conv_dim=512,
-                 num_channels=3, sigmoid_output=False):
+    def __init__(self,
+                 img_size=128,
+                 num_channels=3,
+                 num_classes=10,
+                 channel_base=2048,
+                 style_dim=128,
+                 mapping_latent_dim=128,
+                 class_embed_dim=128,
+                 max_conv_dim=512,
+                 sigmoid_output=False):
+        # channel_base is high for bFFHQ
         super().__init__()
         self.img_size = img_size
         self.sigmoid_output = sigmoid_output
-        self.from_input = nn.Conv2d(num_channels, dim_in, 3, 1, 1)
-
-        self.encode = nn.ModuleList()
         self.decode = nn.ModuleList()
+        if sigmoid_output:
+            self.sigmoid = nn.Sigmoid()
+
+        # Constant input for G
+        self.const = torch.nn.Parameter(torch.randn([max_conv_dim, 4, 4]))
+
+        # Mapping network
+        self.mapping = MappingNetwork(mapping_latent_dim,
+                                      class_embed_dim,
+                                      style_dim,
+                                      num_classes)
+
+        # down/up-sampling blocks
+        repeat_num = int(np.log2(img_size)) - 2
+
+        dim_in = max_conv_dim
+        for i in range(repeat_num):
+            dim_out = min(channel_base // (2**(i+2)), max_conv_dim)
+            self.decode.insert(
+                0, AdainResBlk(dim_in, dim_out, style_dim, upsample=True))  # stack-like
+            dim_in = dim_out
+
+        # to-rgb layer
         self.to_output = nn.Sequential(
             nn.InstanceNorm2d(dim_in, affine=True),
             nn.LeakyReLU(0.2),
             nn.Conv2d(dim_in, num_channels, 1, 1, 0))
 
-        if sigmoid_output:
-            self.sigmoid = nn.Sigmoid()
+    def forward(self, z, c):
+        w = self.mapping(z, c)
 
-        # down/up-sampling blocks
-        repeat_num = max(int(np.log2(img_size)) - 4, 2)
-
-        for _ in range(repeat_num):
-            dim_out = min(dim_in*2, max_conv_dim)
-            self.encode.append(
-                ResBlk(dim_in, dim_out, normalize=True, downsample=True))
-            self.decode.insert(
-                0, AdainResBlk(dim_out, dim_in, style_dim, upsample=True))  # stack-like
-            dim_in = dim_out
-
-        # bottleneck blocks
-        for _ in range(1):
-            self.encode.append(
-                ResBlk(dim_out, dim_out, normalize=True))
-            self.decode.insert(
-                0, AdainResBlk(dim_out, dim_out, style_dim))  # stack-like
-
-    def forward(self, x, s):
-        # content will be barely used in ResGenerator
-        x = self.from_input(x)
-        cache = {}
-
-        for block in self.encode:
-            x = block(x)
+        x = self.const
+        x = x.unsqueeze(0).repeat([z.shape[0], 1, 1, 1])
 
         for block in self.decode:
-            x = block(x, s)
+            x = block(x, w)
 
         output = self.to_output(x)
         if self.sigmoid_output:
             output = self.sigmoid(output)
-
         return output
 
+
 class MappingNetwork(nn.Module):
-    def __init__(self, latent_dim=16, style_dim=64, num_domains=2):
+    def __init__(self,
+                 mapping_latent_dim=128,
+                 class_embed_dim=128,
+                 style_dim=128,
+                 num_classes=10,
+                 num_layers=8):
         super().__init__()
+        self.mapping_latent_dim = mapping_latent_dim
+
+        features_list = [mapping_latent_dim + class_embed_dim] + \
+            [style_dim] * (num_layers - 1) + [style_dim]
         layers = []
-        dim_in = style_dim // 2
-        layers += [
-            nn.Conv2d(num_domains, dim_in, 3, 1, 1),
-            nn.LeakyReLU(0.2),
-            nn.AvgPool2d(2)
-        ]
 
-        repeat_num = int(np.log2(latent_dim)) - 1
+        self.embed = nn.Linear(num_classes, class_embed_dim)
 
-        for _ in range(repeat_num):
-            dim_out = min(dim_in*2, 512)
-            layers += [
-                nn.Conv2d(dim_in, dim_out, 3, 1, 1),
-                nn.LeakyReLU(0.2),
-                nn.AvgPool2d(2)
-            ]
-            dim_in = dim_out
-        self.shared = nn.Sequential(*layers)
+        for idx in range(num_layers):
+            in_features = features_list[idx]
+            out_features = features_list[idx + 1]
+            layers += [nn.Linear(in_features, out_features),
+                       nn.LeakyReLU()]
 
-        self.unshared = nn.ModuleList()
-        for _ in range(num_domains):
-            self.unshared += [nn.Sequential(nn.Linear(dim_out, dim_out),
-                                            nn.ReLU(),
-                                            nn.Linear(dim_out, dim_out),
-                                            nn.ReLU(),
-                                            nn.Linear(dim_out, style_dim))]
+        self.fc = nn.Sequential(*layers)
 
     def forward(self, z, y):
-        h = self.shared(z)
-        h = h.view(h.size(0), h.size(1))
-        out = []
-        for layer in self.unshared:
-            out += [layer(h)]
-        out = torch.stack(out, dim=1)  # (batch, num_domains, style_dim)
-        idx = torch.LongTensor(range(y.size(0))).to(y.device)
-        s = out[idx, y]  # (batch, style_dim)
-        return s
+        if self.mapping_latent_dim != 0:
+            z = normalize_2nd_moment(z)
+            y = normalize_2nd_moment(self.embed(y))
+            x = torch.cat([z, y], dim=1)
+        else:
+            x = normalize_2nd_moment(self.embed(y))
+
+        w = self.fc(x)
+        return w
 
 
-class StyleEncoder(nn.Module):
-    """Could be used in bFFHQ dataset. Almost same as MappingNetwork"""
-    def __init__(self, img_size=256, style_dim=64, num_domains=2, max_conv_dim=512,
-                 num_channels=3):
-        super().__init__()
-        dim_in = 2**14 // img_size
-        blocks = []
-        blocks += [nn.Conv2d(num_channels, dim_in, 3, 1, 1)]
-
-        repeat_num = int(np.log2(img_size)) - 2
-        for _ in range(repeat_num):
-            dim_out = min(dim_in*2, max_conv_dim)
-            blocks += [ResBlk(dim_in, dim_out, downsample=True)]
-            dim_in = dim_out
-
-        blocks += [nn.LeakyReLU(0.2)]
-        blocks += [nn.Conv2d(dim_out, dim_out, 4, 1, 0)]
-        blocks += [nn.LeakyReLU(0.2)]
-        self.shared = nn.Sequential(*blocks)
-
-        self.unshared = nn.ModuleList()
-        for _ in range(num_domains):
-            self.unshared += [nn.Linear(dim_out, style_dim)]
-
-    def forward(self, x, y):
-        h = self.shared(x)
-        h = h.view(h.size(0), -1)
-        out = []
-        for layer in self.unshared:
-            out += [layer(h)]
-        out = torch.stack(out, dim=1)  # (batch, num_domains, style_dim)
-        idx = torch.LongTensor(range(y.size(0))).to(y.device)
-        s = out[idx, y]  # (batch, style_dim)
-        return s
-
-
-class MLPDiscriminator(MLP):
+class Discriminator(nn.Module):
     """
-    Discriminating real/fake and (biased) class (For ColorMNIST only)
-    Debiased discriminator only discriminates real/fake
-        - It is implemented in MLP.py (For ColorMNIST) or ResNet.py
-
-    #TODO: do BN?
+    Discriminating real/fake and biased/debiased
     """
-    def __init__(self):
-        super(MLPDiscriminator, self).__init__(num_classes=10)
-        self.real_fake_classifier = nn.Linear(100, 1)
-
-    def forward(self, x):
-        x = x.view(x.size(0), -1)
-        h = self.feature(x)
-
-        out_cls = self.classifier(h)
-        out_real = self.real_fake_classifier(h)
-        return out_real, out_cls.view(out_cls.size(0), -1)
-
-
-class ConvDiscriminator(nn.Module):
-    """
-    Discriminating real/fake and (biased) class (For all datasets except ColorMNIST)
-
-    """
-    def __init__(self, img_size=256, dim_in=32, num_domains=10, max_conv_dim=512,
-                 num_channels=3):
+    def __init__(self,
+                 img_size=256,
+                 num_channels=3,
+                 num_classes=10,
+                 class_embed_dim=128,
+                 cmap_dim=128,
+                 channel_base=4096,
+                 channel_max=512):
         super().__init__()
         self.img_size = img_size
+        self.cmap_dim = cmap_dim
+        self.img_resolution_log2 = int(np.log2(img_size))
+
+        self.mapping = MappingNetwork(mapping_latent_dim=0,
+                                      class_embed_dim=class_embed_dim,
+                                      style_dim=cmap_dim,
+                                      num_classes=num_classes)
+
+        self.block_resolutions = [2 ** i for i in range(self.img_resolution_log2, 2, -1)]
+        channels_dict = {res: min(channel_base // res, channel_max) for res in self.block_resolutions + [4]}
 
         blocks = []
-        blocks += [nn.Conv2d(num_channels, dim_in, 3, 1, 1)]
+        blocks += [nn.Conv2d(num_channels, channels_dict[img_size], 3, 1, 1)]
 
-        repeat_num = int(np.log2(img_size)) - 2
-        for idx in range(repeat_num):
-            dim_out = min(dim_in*2, max_conv_dim)
-            blocks += ResBlk(dim_in, dim_out, downsample=True)
-            dim_in = dim_out
+        for res in self.block_resolutions:
+            in_channels = channels_dict[res]
+            out_channels = channels_dict[res // 2]
+            blocks += ResBlk(in_channels, out_channels, downsample=True)
+        self.blocks = nn.Sequential(*blocks)
 
-        self._make_layers(dim_out, num_domains)
+        self.real_fake_classifier = DiscriminatorEpilogue(out_channels, cmap_dim=class_embed_dim)
+        self.bias_classifier = DiscriminatorEpilogue(out_channels, cmap_dim=class_embed_dim)
 
-    def _make_layers(self, dim_out, num_domains):
-        self.real_fake_classifier = nn.Conv2d(dim_out, 1, kernel_size=3, stride=1, padding=1, bias=False)
-        self.classifier = nn.Conv2d(dim_out, num_domains, kernel_size=4, bias=False)
-
-    def forward(self, x):
+    def forward(self, x, c):
+        cmap = self.mapping(None, c)
         h = self.blocks(x)
 
-        out_cls = self.classifier(h)
+        out_bias = self.bias_classifier(h)
         out_real = self.real_fake_classifier(h)
-        return out_real.view(out_real.size(0), -1), out_cls.view(out_cls.size(0), -1)
+
+        out_bias = (out_bias * cmap).sum(dim=1, keepdim=True) * (1 / np.sqrt(self.cmap_dim))
+        out_real = (out_real * cmap).sum(dim=1, keepdim=True) * (1 / np.sqrt(self.cmap_dim))
+        return out_bias, out_real
+
+
+class DiscriminatorEpilogue(nn.Module):
+    def __init__(self,
+                 in_channels,
+                 resolution=4,
+                 cmap_dim=128):
+        super().__init__()
+        self.conv = nn.Sequential(*[
+            nn.Conv2d(in_channels, in_channels, 3, 1, 1),
+            nn.LeakyReLU(0.2)
+        ])
+
+        self.fc = nn.Sequential(*[
+            nn.Linear(in_channels * (resolution ** 2), in_channels),
+            nn.LeakyReLU(0.2)
+        ])
+
+        self.out = nn.Linear(in_channels, cmap_dim)
+
+    def forward(self, h):
+        x = self.conv(h)
+        x = self.fc(x.flatten(1))
+        x = self.out(x)
+        return x
+
+
+def normalize_2nd_moment(x, dim=1, eps=1e-8):
+    return x * (x.square().mean(dim=dim, keepdim=True) + eps).rsqrt()
+
 
 class Normalize(nn.Module):
     def __init__(self, power=2):
