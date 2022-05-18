@@ -110,38 +110,14 @@ def denormalize(x):
     return out.clamp_(0, 1)
 
 @torch.no_grad()
-def debug_image(nets, args, inputs, step, num_images=32, denormalize=False):
-    x_sup, y, idx = inputs.x_sup, inputs.y, inputs.index
-    y_trg = inputs.y_trg
-    c_src, c_trg = inputs.c_src, inputs.c_trg
-
-    device = inputs.x_sup.device
-    N = inputs.x_sup.size(0)
-
-    # translate and reconstruct
-    filename = ospj(args.result_dir, '%06d_cycle_consistency.jpg' % (step))
-    translate_and_reconstruct(nets, x_sup, y, y_trg, c_src, c_trg, filename,
-                              denormalize=denormalize, num_images=num_images)
-
-@torch.no_grad()
-def translate_and_reconstruct(nets, x_src, y_src, y_trg, c_src, c_trg, filename,
-                              denormalize=False, num_images=32):
-    x_src = x_src[:num_images]
-    y_src = y_src[:num_images]
-    y_trg = y_trg[:num_images]
-    c_src = c_src[:num_images]
-    c_trg = c_trg[:num_images]
-    N, C, H, W = x_src.size()
-
-    s_trg = nets.mapping_network(c_trg, y_trg)
-    x_fake = nets.generator(x_src, s_trg)
-    s_src = nets.mapping_network(c_src, y_src)
-    x_recon = nets.generator(x_fake, s_src)
-
-    x_concat = [x_src, x_fake, x_recon]
-    x_concat = torch.cat(x_concat, dim=0)
-    save_image(x_concat, N, filename, denormalize=denormalize)
-    del x_concat
+def debug_image(nets, args, step, z_dim, num_classes=10, denormalize=False, device='cuda'):
+    filename = ospj(args.result_dir, '%06d_generation.jpg' % (step))
+    z = torch.randn([10*num_classes, z_dim], device=device)
+    y_g = np.concatenate([np.array([i]*10) for i in range(num_classes)])
+    c = torch.eye(num_classes, device=device)[y_g]
+    x_fake = nets.generator(z, c)
+    save_image(x_fake, num_classes, filename, denormalize=denormalize)
+    del(x_fake)
 
 def save_image(x, ncol, filename, denormalize=False):
     if denormalize: x = denormalize(x)

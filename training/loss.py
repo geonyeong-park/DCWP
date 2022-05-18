@@ -26,10 +26,10 @@ class GeneralizedCELoss(nn.Module):
         loss = F.cross_entropy(logits, targets, reduction='none') * loss_weight
         return loss
 
-def adv_loss(logits, target):
+def adv_loss(logits, target, weight=None):
     assert target in [1, 0]
     targets = torch.full_like(logits, fill_value=target)
-    loss = F.binary_cross_entropy_with_logits(logits, targets)
+    loss = nn.BCEWithLogitsLoss(weight=weight)(logits, targets)
     return loss
 
 def r1_reg(d_out, x_in):

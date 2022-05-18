@@ -36,9 +36,10 @@ class CheckpointIO(object):
             outdict[name] = module.state_dict()
         torch.save(outdict, fname)
 
-    def load(self, step, token, which=None):
+    def load(self, step, token, which=None, return_fname=False):
         fname = self.fname_template.format(step, token)
-        assert os.path.exists(fname), fname + ' does not exist!'
+        if not os.path.exists(fname): print(f'WARNING: {fname} does not exist!')
+        if return_fname: return fname
         print('Loading checkpoint from %s...' % fname)
         if torch.cuda.is_available():
             module_dict = torch.load(fname)

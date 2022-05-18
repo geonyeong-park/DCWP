@@ -11,11 +11,17 @@ transforms = {
     'original': {
         "cmnist": {
             "train": T.Compose([
-                T.ToTensor()]),
+                T.Resize(32),
+                T.ToTensor(),
+            ]),
             "valid": T.Compose([
-                T.ToTensor()]),
+                T.Resize(32),
+                T.ToTensor(),
+            ]),
             "test": T.Compose([
-                T.ToTensor()])
+                T.Resize(32),
+                T.ToTensor(),
+            ])
             },
         "bffhq": {
             "train": T.Compose([T.Resize((224,224)), T.ToTensor()]), #TODO: 224->128
@@ -23,17 +29,17 @@ transforms = {
             "test": T.Compose([T.Resize((224,224)), T.ToTensor()])
             },
         "cifar10c": {
-            "train": T.Compose([T.ToTensor(),]),
-            "valid": T.Compose([T.ToTensor(),]),
-            "test": T.Compose([T.ToTensor(),]),
+            "train": T.Compose([T.Resize(32), T.ToTensor(),]),
+            "valid": T.Compose([T.Resize(32), T.ToTensor(),]),
+            "test": T.Compose([T.Resize(32), T.ToTensor(),]),
             }
     },
 
     'preprocess': {
         "cmnist": {
-            "train": T.Compose([T.ToTensor()]),
-            "valid": T.Compose([T.ToTensor()]),
-            "test": T.Compose([T.ToTensor()])
+            "train": T.Compose([T.Resize(32), T.ToTensor()]),
+            "valid": T.Compose([T.Resize(32), T.ToTensor()]),
+            "test": T.Compose([T.Resize(32), T.ToTensor()])
             },
         "bffhq": {
             "train": T.Compose([

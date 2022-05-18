@@ -6,9 +6,7 @@ from util.params import config
 def setup(args):
     fname = args.exp_name
     if fname is None:
-        fname = f'{args.data}_LabeledRatio_{args.labeled_ratio}_conflict_{args.conflict_pct}_seed_{args.seed}'
-    else:
-        fname = f'{args.data}_{args.exp_name}_LabeledRatio_{args.labeled_ratio}_conflict_{args.conflict_pct}_seed_{args.seed}'
+        fname = f'{args.data}_conflict_{args.conflict_pct}_{args.mode}_seed_{args.seed}'
 
 
     args.result_dir = ospj(args.result_dir, fname)
@@ -19,11 +17,6 @@ def setup(args):
 
     args.checkpoint_dir = ospj(args.checkpoint_dir, fname)
     os.makedirs(args.checkpoint_dir, exist_ok=True)
-
-    if args.labeled_ratio == 1.:
-        args.use_unsup_data = False
-    else:
-        args.use_unsup_data = True
 
     return args
 

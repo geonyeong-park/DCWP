@@ -17,63 +17,12 @@ from util.utils import MultiDimAverageMeter
 from data.data_loader import InputFetcher
 from model.build_models import build_model
 from training.loss import GeneralizedCELoss
+from training.solver import Solver
 
 
-class DebiasSolver(nn.Module):
+class FeatureSwapSolver(Solver):
     def __init__(self, args):
-        super().__init__()
-        self.args = args
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.num_classes = config[args.data]['num_classes']
-        self.attr_dims = [self.num_classes, self.num_classes]
-
-        self.nets = build_model(args)
-        # below setattrs are to make networks be children of Solver, e.g., for self.to(self.device)
-        for name, module in self.nets.items():
-            utils.print_network(module, name)
-            setattr(self, name, module)
-
-        self.optims = Munch()
-        for net in self.nets.keys():
-            self.optims[net] = torch.optim.Adam(
-                params=self.nets[net].parameters(),
-                lr=args.lr,
-                betas=(args.beta1, args.beta2),
-                weight_decay=0
-            )
-
-        # LR decaying: not used when training GAN
-        self.scheduler = Munch()
-        for net in self.nets.keys():
-            self.scheduler[net] = torch.optim.lr_scheduler.StepLR(
-                self.optims[net], step_size=args.lr_decay_step, gamma=args.lr_gamma)
-
-        self.ckptios = [
-            CheckpointIO(ospj(args.checkpoint_dir, '{:06d}_{}_nets.ckpt'), **self.nets),
-        ]
-        logging.basicConfig(filename=os.path.join(args.log_dir, 'training.log'),
-                            level=logging.INFO)
-
-        self.to(self.device)
-        self.bias_criterion = GeneralizedCELoss()
-        self.criterion = nn.CrossEntropyLoss(reduction='none')
-
-    def _reset_grad(self):
-        def _recursive_reset(optims_dict):
-            for _, optim in optims_dict.items():
-                if isinstance(optim, dict):
-                    _recursive_reset(optim)
-                else:
-                    optim.zero_grad()
-        return _recursive_reset(self.optims)
-
-    def _save_checkpoint(self, step, token):
-        for ckptio in self.ckptios:
-            ckptio.save(step, token)
-
-    def _load_checkpoint(self, step, token, which=None):
-        for ckptio in self.ckptios:
-            ckptio.load(step, token, which)
+        super(FeatureSwapSolver).__init__(self, args)
 
     def validation(self, fetcher, swap=False):
         self.nets.biased_F.eval()
@@ -128,20 +77,6 @@ class DebiasSolver(nn.Module):
         self.nets.debiased_C.train()
 
         return total_acc_b, total_acc_d, accs_b, accs_d
-
-    def report_validation(self, valid_attrwise_acc, valid_acc, step, which='bias'):
-        eye_tsr = torch.eye(self.attr_dims[0]).long()
-        valid_acc_align = valid_attrwise_acc[eye_tsr == 1].mean().item()
-        valid_acc_conflict = valid_attrwise_acc[eye_tsr == 0].mean().item()
-
-        all_acc = dict()
-        for acc, key in zip([valid_acc, valid_acc_align, valid_acc_conflict],
-                                ['Acc/total', 'Acc/align', 'Acc/conflict']):
-            all_acc[key] = acc
-        log = f"({which} Validation) Iteration [{step+1}], "
-        log += ' '.join(['%s: [%.4f]' % (key, value) for key, value in all_acc.items()])
-        print(log)
-        logging.info(log)
 
     def set_loss_ema(self, loaders):
         train_target_attr = []
@@ -227,8 +162,8 @@ class DebiasSolver(nn.Module):
         for i in range(args.total_iters):
             # fetch images and labels
             inputs = next(fetcher)
-            idx, x_sup, label, fname = inputs.index, inputs.x_sup, inputs.y, inputs.fname_sup
-            z_l, z_b, loss_dis_conflict, loss_dis_align, loss_weight = self.compute_dis_loss(x_sup, idx, label)
+            idx, x, label, fname = inputs.index, inputs.x, inputs.y, inputs.fname
+            z_l, z_b, loss_dis_conflict, loss_dis_align, loss_weight = self.compute_dis_loss(x, idx, label)
 
             # feature-level augmentation : augmentation after certain iteration (after representation is disentangled at a certain level)
             if i+1 > args.swap_iter:
@@ -276,7 +211,7 @@ class DebiasSolver(nn.Module):
                 self.report_validation(valid_attrwise_acc_b, total_acc_b, i, which='bias')
                 self.report_validation(valid_attrwise_acc_d, total_acc_d, i, which='debias')
 
-            if i+1 >= args.swap_iter:
+            if self.args.do_lr_scheduling:
                 self.scheduler.biased_F.step()
                 self.scheduler.debiased_F.step()
                 self.scheduler.biased_C.step()

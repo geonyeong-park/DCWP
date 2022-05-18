@@ -8,20 +8,17 @@ from PIL import Image
 
 
 class CMNISTDataset(Dataset):
-    def __init__(self, root, name='cmnist', split='train', mode='sup', use_unsup_data=True, transform=None,
-                 labeled_ratio=0.1, conflict_pct=5):
+    def __init__(self, root, name='cmnist', split='train', transform=None, conflict_pct=5):
         super(CMNISTDataset, self).__init__()
         self.name = name
         self.transform = transform
         self.root = root
-        self.mode_token = 'unsupervised' if mode == 'unsup' else 'supervised'
-        self.label_token = f'labeled_ratio_{labeled_ratio}'
         if conflict_pct >= 1:
             conflict_pct = int(conflict_pct)
         self.conflict_token = f'{conflict_pct}pct'
 
         if split=='train':
-            self.header_dir = os.path.join(root, self.name, self.mode_token, self.label_token, self.conflict_token)
+            self.header_dir = os.path.join(root, self.name, self.conflict_token)
             self.align = glob(os.path.join(self.header_dir, 'align', "*", "*"))
             self.conflict = glob(os.path.join(self.header_dir, 'conflict',"*", "*"))
 
@@ -40,20 +37,15 @@ class CMNISTDataset(Dataset):
         if self.transform is not None:
             image = self.transform(image)
 
-        #TODO: Return true pseudo bias-or-not label
-        return image, attr, self.data[index], None # attr=(class_label, bias_label)
+        return image, attr, self.data[index] # attr=(class_label, bias_label)
 
 class CIFAR10Dataset(CMNISTDataset):
-    def __init__(self, root, name='cmnist', split='train', mode='sup', use_unsup_data=True, transform=None,
-                 labeled_ratio=0.1, conflict_pct=5):
-        super(CIFAR10Dataset, self).__init__(root, name, split, mode, use_unsup_data, transform,
-                                             labeled_ratio, conflict_pct)
+    def __init__(self, root, name='cmnist', split='train', transform=None, conflict_pct=5):
+        super(CIFAR10Dataset, self).__init__(root, name, split, transform, conflict_pct)
 
 class bFFHQDataset(CMNISTDataset):
-    def __init__(self, root, name='cmnist', split='train', mode='sup', use_unsup_data=True, transform=None,
-                 labeled_ratio=0.1, conflict_pct=5):
-        super(bFFHQDataset, self).__init__(root, name, split, mode, use_unsup_data, transform,
-                                           labeled_ratio, conflict_pct)
+    def __init__(self, root, name='cmnist', split='train', transform=None, conflict_pct=5):
+        super(bFFHQDataset, self).__init__(root, name, split, transform, conflict_pct)
 
         if split=='test':
             self.data = glob(os.path.join(root, self.name, 'test', "*"))
