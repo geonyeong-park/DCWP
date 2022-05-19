@@ -19,10 +19,18 @@ from model.build_models import build_model
 from training.loss import GeneralizedCELoss
 from training.solver import Solver
 
+from data.data_loader import get_original_loader, get_val_loader
 
 class FeatureSwapSolver(Solver):
     def __init__(self, args):
-        super(FeatureSwapSolver).__init__(self, args)
+        super(FeatureSwapSolver, self).__init__(args)
+        for net in self.nets.keys():
+            self.optims[net] = torch.optim.Adam(
+                params=self.nets[net].parameters(),
+                lr=args.lr,
+                betas=(args.beta1, args.beta2),
+                weight_decay=0
+            )
 
     def validation(self, fetcher, swap=False):
         self.nets.biased_F.eval()
@@ -78,19 +86,19 @@ class FeatureSwapSolver(Solver):
 
         return total_acc_b, total_acc_d, accs_b, accs_d
 
-    def set_loss_ema(self, loaders):
+    def set_loss_ema(self, dataset):
         train_target_attr = []
-        for data in loaders.sup_dataset.dataset.data:
-            fname = os.path.relpath(data, loaders.sup_dataset.dataset.header_dir)
+        for data in dataset.data:
+            fname = os.path.relpath(data, dataset.header_dir)
             train_target_attr.append(int(fname.split('_')[-2]))
         train_target_attr = torch.LongTensor(train_target_attr)
 
         self.sample_loss_ema_b = utils.EMA(train_target_attr, num_classes=self.num_classes, alpha=0.7)
         self.sample_loss_ema_d = utils.EMA(train_target_attr, num_classes=self.num_classes, alpha=0.7)
 
-    def compute_dis_loss(self, x_sup, idx, label):
-        z_l = self.nets.debiased_F.extract(x_sup)
-        z_b = self.nets.biased_F.extract(x_sup)
+    def compute_dis_loss(self, x, idx, label):
+        z_l = self.nets.debiased_F.extract(x)
+        z_b = self.nets.biased_F.extract(x)
 
         # Gradients of z_b are not backpropagated to z_l (and vice versa) in order to guarantee disentanglement of representation.
         z_conflict = torch.cat((z_l, z_b.detach()), dim=1)
@@ -146,20 +154,18 @@ class FeatureSwapSolver(Solver):
 
         return z_b_swap, label_swap, loss_swap_conflict, loss_swap_align
 
-    def train(self, loaders):
+    def train(self):
         logging.info('=== Start training ===')
         args = self.args
         nets = self.nets
         optims = self.optims
 
-        fetcher = InputFetcher(loaders.sup, loaders.unsup,
-                               use_unsup_data=args.use_unsup_data,
-                               mode='FeatureSwap')
-        fetcher_val = loaders.val
+        fetcher = InputFetcher(self.loaders.train)
+        fetcher_val = self.loaders.val
         start_time = time.time()
-        self.set_loss_ema(loaders)
+        self.set_loss_ema(get_original_loader(args, return_dataset=True))
 
-        for i in range(args.total_iters):
+        for i in range(args.total_iter):
             # fetch images and labels
             inputs = next(fetcher)
             idx, x, label, fname = inputs.index, inputs.x, inputs.y, inputs.fname
@@ -188,7 +194,7 @@ class FeatureSwapSolver(Solver):
             if (i+1) % args.print_every == 0:
                 elapsed = time.time() - start_time
                 elapsed = str(datetime.timedelta(seconds=elapsed))[:-7]
-                log = "Elapsed time [%s], Iteration [%i/%i], LR [%.4f]" % (elapsed, i+1, args.total_iters,
+                log = "Elapsed time [%s], Iteration [%i/%i], LR [%.4f]" % (elapsed, i+1, args.total_iter,
                                                                            optims.biased_F.param_groups[-1]['lr'])
 
                 all_losses = dict()

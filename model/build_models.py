@@ -10,7 +10,9 @@ def build_model(args):
     if args.mode == 'prune':
         if args.data == 'cmnist':
             classifier = GateCNN() if not args.cmnist_use_mlp else GateFCN()
-            nets = Munch(classifier=classifier)
+            biased_classifier = GateCNN() if not args.cmnist_use_mlp else GateFCN()
+            nets = Munch(classifier=classifier,
+                         biased_classifier=biased_classifier)
             #TODO: Cifar10 resize 32x32 with crop?
         else:
             raise NotImplementedError()

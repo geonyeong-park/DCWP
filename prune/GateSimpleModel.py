@@ -51,6 +51,13 @@ class GateCNN(nn.Module):
     def freeze_switch(self, turn_on=False):
         self.freeze = turn_on
 
+    def prune_permanently(self):
+        for m in self.modules():
+            if isinstance(m, GateConv2d) or isinstance(m, GateMLP):
+                mask = m.mask.fix_mask_after_pruning()
+                m.weight = m.weight*mask.to(m.weight.device)
+        print('Prune out weights permanently')
+
 
 class GateFCN(nn.Module):
     # For cmnist only. Some baselines use FCN in cmnist task
@@ -93,3 +100,10 @@ class GateFCN(nn.Module):
 
     def freeze_switch(self, turn_on=False):
         self.freeze = turn_on
+
+    def prune_permanently(self):
+        for m in self.modules():
+            if isinstance(m, GateConv2d) or isinstance(m, GateMLP):
+                mask = m.mask.fix_mask_after_pruning()
+                m.weight = m.weight*mask.to(m.weight.device)
+        print('Prune out weights permanently')

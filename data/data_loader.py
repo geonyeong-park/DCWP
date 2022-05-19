@@ -24,11 +24,10 @@ def get_original_loader(args, return_dataset=False, sampling_weight=None):
 
     dataset = dataset_class(root=args.train_root_dir, name=dataset_name, split='train',
                             transform=transform, conflict_pct=args.conflict_pct)
-    dataset = IdxDataset(dataset)
-
     if return_dataset:
         return dataset
     else:
+        dataset = IdxDataset(dataset)
         if sampling_weight is not None:
             sampler = WeightedRandomSampler(sampling_weight, args.batch_size, replacement=False)
             return data.DataLoader(dataset=dataset,

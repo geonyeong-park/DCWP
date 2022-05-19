@@ -38,8 +38,8 @@ class Solver(nn.Module):
         self.optims = Munch() # Used in pretraining
         for net in self.nets.keys():
             self.optims[net] = torch.optim.SGD(
-                params=self.nets[net].parameters(),
-                lr=args.lr_main,
+                self.nets[net].parameters(),
+                lr=args.lr_pre,
                 momentum=0.9,
                 weight_decay=args.weight_decay
             )
@@ -48,7 +48,7 @@ class Solver(nn.Module):
         if args.do_lr_scheduling:
             for net in self.nets.keys():
                 self.scheduler[net] = torch.optim.lr_scheduler.StepLR(
-                    self.optims[net], step_size=args.lr_decay_step, gamma=args.lr_gamma)
+                    self.optims[net], step_size=args.lr_decay_step_pre, gamma=args.lr_gamma_pre)
 
         self.ckptios = [
             CheckpointIO(ospj(args.checkpoint_dir, '{:06d}_{}_nets.ckpt'), **self.nets),
@@ -77,9 +77,9 @@ class Solver(nn.Module):
         for ckptio in self.ckptios:
             ckptio.save(step, token)
 
-    def _load_checkpoint(self, step, token, which=None):
+    def _load_checkpoint(self, step, token, which=None, return_fname=False):
         for ckptio in self.ckptios:
-            ckptio.load(step, token, which)
+            ckptio.load(step, token, which, return_fname)
 
     def validation(self, fetcher):
         self.nets.classifier.eval()
@@ -141,11 +141,16 @@ class Solver(nn.Module):
             inputs = next(fetcher)
             idx, x, label, fname = inputs.index, inputs.x, inputs.y, inputs.fname
             pred = self.nets.classifier(x)
+            pred_bias = self.nets.biased_classifier(x)
+
             loss = self.criterion(pred, label).mean()
+            loss_bias = self.bias_criterion(pred_bias, label).mean()
 
             self._reset_grad()
             loss.backward()
+            loss_bias.backward()
             optims.classifier.step()
+            optims.biased_classifier.step()
 
             # print out log info
             if (i+1) % args.print_every == 0:
@@ -155,7 +160,8 @@ class Solver(nn.Module):
                                                                            optims.classifier.param_groups[-1]['lr'])
 
                 all_losses = dict()
-                for loss, key in zip([loss.item()], ['Loss/']):
+                for loss, key in zip([loss.item(), loss_bias.item()], ['Debiased/',
+                                                                       'Biased/']):
                     all_losses[key] = loss
                 log += ' '.join(['%s: [%f]' % (key, value) for key, value in all_losses.items()])
                 print(log)
@@ -171,3 +177,4 @@ class Solver(nn.Module):
 
             if self.args.do_lr_scheduling:
                 self.scheduler.classifier.step()
+                self.scheduler.biased_classifier.step()

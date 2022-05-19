@@ -8,7 +8,7 @@ import torch
 
 from training.pruning_solver import PruneSolver
 from training.feature_swap_solver import FeatureSwapSolver
-from util import setup, save_config
+from util import setup, save_config, modify_args_for_baselines
 
 
 def main(args):
@@ -52,21 +52,40 @@ if __name__ == '__main__':
     parser.add_argument('--lambda_con', type=float, default=0)
     parser.add_argument('--lambda_sparse', type=float, default=1e-8)
     parser.add_argument('--lambda_upweight', type=float, default=20)
+    parser.add_argument('--lambda_swap', type=float, default=1)
+    parser.add_argument('--lambda_dis_align', type=float, default=10)
+    parser.add_argument('--lambda_swap_align', type=float, default=10)
 
     # training arguments
     parser.add_argument('--batch_size', type=int, default=256,
                         help='Batch size for training')
     parser.add_argument('--do_lr_scheduling', default=True)
-    parser.add_argument('--lr_decay_step', type=int, default=600)
-    parser.add_argument('--lr_gamma', type=float, default=0.1)
-    parser.add_argument('--lr_main', type=float, default=1e-1)
+
+
+    # Pretraining
+    parser.add_argument('--lr_decay_step_pre', type=int, default=600)
+    parser.add_argument('--lr_gamma_pre', type=float, default=0.1)
+    parser.add_argument('--lr_pre', type=float, default=1e-1)
+    parser.add_argument('--pretrain_iter', type=int, default=2000)
+
+    # Pruning
     parser.add_argument('--lr_prune', type=float, default=1e-2)
+    parser.add_argument('--pruning_iter', type=int, default=2000)
+
+    # Retraining
+    parser.add_argument('--lr_main', type=float, default=1e-2)
+    parser.add_argument('--retrain_iter', type=int, default=2000)
+    parser.add_argument('--lr_decay_step_main', type=int, nargs='+', default=[600, 1200])
+    parser.add_argument('--lr_gamma_main', type=float, default=0.1)
+
+    parser.add_argument('--total_iter', type=int, default=50000)
+    parser.add_argument('--swap_iter', type=int, default=10000)
+    parser.add_argument('--weight_decay', type=float, default=1e-4) #TODO: weight decay is important in JTT!
+    parser.add_argument('--reinitialize', default=False, action='store_true')
+    parser.add_argument('--MRM', default=False, action='store_true')
+    parser.add_argument('--select_with_GCE', default=False, action='store_true')
     parser.add_argument('--beta1', type=float, default=0.9)
     parser.add_argument('--beta2', type=float, default=0.99)
-    parser.add_argument('--pretrain_iter', type=int, default=2000)
-    parser.add_argument('--pruning_iter', type=int, default=2000)
-    parser.add_argument('--retrain_iter', type=int, default=2000)
-    parser.add_argument('--weight_decay', type=float, default=1e-4) #TODO: weight decay is important in JTT!
 
     # misc
     parser.add_argument('--mode', type=str, required=True,
@@ -93,4 +112,6 @@ if __name__ == '__main__':
     parser.add_argument('--eval_every', type=int, default=500)
 
     args = parser.parse_args()
+    args = modify_args_for_baselines(args)
+
     main(args)

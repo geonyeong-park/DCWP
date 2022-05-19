@@ -38,6 +38,7 @@ class PruneSolver(Solver):
                 momentum=0.9,
                 weight_decay=args.weight_decay
             )
+
             self.optims_mask[net] = torch.optim.Adam(
                 prune_param,
                 lr=args.lr_prune,
@@ -46,8 +47,8 @@ class PruneSolver(Solver):
         self.scheduler_main = Munch() # Used in retraining
         if args.do_lr_scheduling:
             for net in self.nets.keys():
-                self.scheduler_main[net] = torch.optim.lr_scheduler.StepLR(
-                    self.optims[net], step_size=args.lr_decay_step, gamma=args.lr_gamma)
+                self.scheduler_main[net] = torch.optim.lr_scheduler.MultiStepLR(
+                    self.optims[net], milestones=args.lr_decay_step_main, gamma=args.lr_gamma_main)
 
     def sparsity_regularizer(self, token='gumbel_pi'):
         reg = 0.
@@ -58,6 +59,8 @@ class PruneSolver(Solver):
 
     def save_wrong_idx(self, loader):
         self.nets.classifier.eval()
+        self.nets.biased_classifier.eval()
+
         iterator = enumerate(loader)
         total_wrong, total_num = 0, 0
         wrong_idx = torch.empty(0).to(self.device)
@@ -68,7 +71,11 @@ class PruneSolver(Solver):
             data = data.to(self.device)
 
             with torch.no_grad():
-                logit = self.nets.classifier(data)
+                if self.args.select_with_GCE:
+                    logit = self.nets.biased_classifier(data)
+                else:
+                    logit = self.nets.classifier(data)
+
                 pred = logit.data.max(1, keepdim=True)[1].squeeze(1)
                 wrong = (pred != label).long()
 
@@ -85,6 +92,7 @@ class PruneSolver(Solver):
         torch.save(wrong_label, wrong_idx_path)
         print('Saved wrong index label.')
         self.nets.classifier.train()
+        self.nets.biased_classifier.train()
 
     def train_PRUNE(self, iters):
         args = self.args
@@ -98,7 +106,8 @@ class PruneSolver(Solver):
         for idx in subsampled_idx:
             wrong_label[idx] = 1
 
-        balanced_loader = get_original_loader(args, sampling_weight=wrong_label)
+        sampling_weight = wrong_label if not args.MRM else torch.ones_like(wrong_label)
+        balanced_loader = get_original_loader(args, sampling_weight=sampling_weight)
 
         fetcher = InputFetcher(balanced_loader)
         fetcher_val = self.loaders.val
@@ -159,6 +168,7 @@ class PruneSolver(Solver):
         optims = self.optims_main # Train only pruning parameter
 
         wrong_label = torch.load(ospj(self.args.checkpoint_dir, 'wrong_index.pth'))
+        print('Number of wrong samples: ', wrong_label.sum())
         upweight = torch.ones_like(wrong_label)
         upweight[wrong_label == 1] = args.lambda_upweight
 
@@ -216,13 +226,16 @@ class PruneSolver(Solver):
         try:
             self._load_checkpoint(args.pretrain_iter, 'pretrain')
             print('Pretrained ckpt exists. Checking upweight index ckpt...')
-            assert os.path.exists(ospj(args.checkpoint_dir, 'wrong_index.pth')), \
-                print('Upweight ckpt does not exist.')
-            print('Upweight ckpt exists.')
         except:
             print('Start pretraining...')
             self.train_ERM(args.pretrain_iter)
             self._load_checkpoint(args.pretrain_iter, 'pretrain')
+
+
+        if os.path.exists(ospj(args.checkpoint_dir, 'wrong_index.pth')):
+            print('Upweight ckpt exists.')
+        else:
+            print('Upweight ckpt does not exist. Creating...')
             self.save_wrong_idx(loader)
 
         assert os.path.exists(ospj(args.checkpoint_dir, 'wrong_index.pth'))
@@ -233,33 +246,14 @@ class PruneSolver(Solver):
             print('Pruning parameter ckpt does not exist. Start pruning...')
             self.train_PRUNE(args.pruning_iter)
 
-        self.retrain(args.retrain_iter)
+        if self.args.reinitialize:
+            reinit_dict = torch.load(ospj(args.checkpoint_dir, '{:06d}_{}_nets.ckpt'.format(0, 'initial')))['classifier']
+            mask_dict = torch.load(ospj(args.checkpoint_dir, '{:06d}_{}_nets.ckpt'.format(args.pruning_iter, 'prune')))['classifier']
+            pruning_dict = {k: v for k, v in mask_dict.items() if 'gumbel_pi' in k}
+            reinit_dict.update(pruning_dict) # Update pruning parameters only
+            self.nets.classifier.load_state_dict(reinit_dict)
+            print('Reinitialized model from ', ospj(args.checkpoint_dir, '{:06d}_{}_nets.ckpt'.format(0, 'initial')))
 
-        """
-        self._load_checkpoint(0, 'initialization')
-
-        torch.load(
-        pruning_dict = {k: v for k, v in mask.state_dict().items() if 'gumbel_pi' in k}
-
-        model_reinit = get_model(   # Reload IMAGENET pretrained weights again
-            model=args.model,
-            pretrained=not args.train_from_scratch,
-            resume=resume,
-            n_classes=train_data.n_classes,
-            dataset=args.dataset,
-            log_dir=args.log_dir,
-            prune=args.prune,
-            biased_ckpt=None
-        )
-        reinit_dict = model_reinit.state_dict()
-        reinit_dict.update(pruning_dict) # Update pruning parameters only
-
-        self._load_checkpoint(0, 'initialization')
         self.retrain(args.retrain_iter)
         print('Finished training')
-        """
-
-
-
-
 
