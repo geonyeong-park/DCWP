@@ -1,13 +1,11 @@
 from munch import Munch
-import copy
-import numpy as np
 from model.simple_model import CNN, MLP, FC
 from prune.GateSimpleModel import GateCNN, GateFCN
 
 from util.params import config
 
 def build_model(args):
-    if args.mode == 'prune':
+    if args.mode in ['prune', 'JTT', 'MRM', 'ERM']:
         if args.data == 'cmnist':
             classifier = GateCNN() if not args.cmnist_use_mlp else GateFCN()
             biased_classifier = GateCNN() if not args.cmnist_use_mlp else GateFCN()

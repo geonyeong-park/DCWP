@@ -1,11 +1,12 @@
 import os
 import argparse
-from copy import deepcopy
 
 from munch import Munch
 from torch.backends import cudnn
 import torch
 
+from training.solver import Solver
+from training.ERM_solver import ERMSolver
 from training.pruning_solver import PruneSolver
 from training.feature_swap_solver import FeatureSwapSolver
 from util import setup, save_config, modify_args_for_baselines
@@ -20,12 +21,20 @@ def main(args):
 
     if args.mode == 'prune':
         solver = PruneSolver(args)
+    elif args.mode == 'JTT':
+        args.select_with_GCE = False
+        args.lambda_con_retrain = 0
+        solver = PruneSolver(args)
+    elif args.mode == 'MRM':
+        args.select_with_GCE = False
+        args.uniform_weight = True
+        solver = PruneSolver(args)
     elif args.mode == 'featureswap':
         solver = FeatureSwapSolver(args)
     elif args.mode == 'LfF':
         solver = LfFSolver(args)
-    elif args.mode == 'JTT':
-        solver = JTTSolver(args)
+    elif args.mode == 'ERM':
+        solver = ERMSolver(args)
     else:
         raise NotImplementedError
 
@@ -39,6 +48,9 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
+    parser.add_argument('--mode', type=str, required=True,
+                        choices=['prune', 'featureswap', 'LfF', 'JTT', 'MRM', 'ERM'])
+
     # Data arguments
     parser.add_argument('--data', type=str, default='cmnist',
                         choices=['cmnist', 'cifar10c', 'bffhq'])
@@ -49,12 +61,10 @@ if __name__ == '__main__':
                         choices=['train', 'test'])
 
     # weight for objective functions
-    parser.add_argument('--lambda_con', type=float, default=0)
+    parser.add_argument('--lambda_con_prune', type=float, default=0.05)
+    parser.add_argument('--lambda_con_retrain', type=float, default=0.05)
     parser.add_argument('--lambda_sparse', type=float, default=1e-8)
     parser.add_argument('--lambda_upweight', type=float, default=20)
-    parser.add_argument('--lambda_swap', type=float, default=1)
-    parser.add_argument('--lambda_dis_align', type=float, default=10)
-    parser.add_argument('--lambda_swap_align', type=float, default=10)
 
     # training arguments
     parser.add_argument('--batch_size', type=int, default=256,
@@ -74,22 +84,25 @@ if __name__ == '__main__':
 
     # Retraining
     parser.add_argument('--lr_main', type=float, default=1e-2)
-    parser.add_argument('--retrain_iter', type=int, default=2000)
-    parser.add_argument('--lr_decay_step_main', type=int, nargs='+', default=[600, 1200])
+    parser.add_argument('--retrain_iter', type=int, default=500)
+    parser.add_argument('--lr_decay_step_main', type=int, default=600)
     parser.add_argument('--lr_gamma_main', type=float, default=0.1)
 
-    parser.add_argument('--total_iter', type=int, default=50000)
-    parser.add_argument('--swap_iter', type=int, default=10000)
     parser.add_argument('--weight_decay', type=float, default=1e-4) #TODO: weight decay is important in JTT!
-    parser.add_argument('--reinitialize', default=False, action='store_true')
-    parser.add_argument('--MRM', default=False, action='store_true')
+    parser.add_argument('--reinitialize', default=False, action='store_true') # MRM
+    parser.add_argument('--uniform_weight', default=False, action='store_true') # MRM
     parser.add_argument('--select_with_GCE', default=False, action='store_true')
+
+    # For FeatureSwap
+    parser.add_argument('--total_iter', type=int, default=20000)
+    parser.add_argument('--swap_iter', type=int, default=10000)
     parser.add_argument('--beta1', type=float, default=0.9)
     parser.add_argument('--beta2', type=float, default=0.99)
+    parser.add_argument('--lambda_swap', type=float, default=1)
+    parser.add_argument('--lambda_dis_align', type=float, default=10)
+    parser.add_argument('--lambda_swap_align', type=float, default=10)
 
     # misc
-    parser.add_argument('--mode', type=str, required=True,
-                        choices=['prune', 'featureswap', 'LfF', 'JTT'])
     parser.add_argument('--num_workers', type=int, default=4,
                         help='Number of workers used in DataLoader')
     parser.add_argument('--seed', type=int, default=7777,

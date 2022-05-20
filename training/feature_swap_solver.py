@@ -7,21 +7,16 @@ import logging
 import numpy as np
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 
-from util.checkpoint import CheckpointIO
-from util.params import config
 import util.utils as utils
 from util.utils import MultiDimAverageMeter
 from data.data_loader import InputFetcher
-from model.build_models import build_model
-from training.loss import GeneralizedCELoss
+from data.data_loader import get_original_loader, get_val_loader
 from training.solver import Solver
 
-from data.data_loader import get_original_loader, get_val_loader
 
 class FeatureSwapSolver(Solver):
+    # Hyperparameter settings in util/__init__.py
     def __init__(self, args):
         super(FeatureSwapSolver, self).__init__(args)
         for net in self.nets.keys():
@@ -31,6 +26,12 @@ class FeatureSwapSolver(Solver):
                 betas=(args.beta1, args.beta2),
                 weight_decay=0
             )
+
+        self.scheduler = Munch()
+        if args.do_lr_scheduling:
+            for net in self.nets.keys():
+                self.scheduler[net] = torch.optim.lr_scheduler.StepLR(
+                    self.optims[net], step_size=args.lr_decay_step, gamma=args.lr_gamma)
 
     def validation(self, fetcher, swap=False):
         self.nets.biased_F.eval()
@@ -223,3 +224,11 @@ class FeatureSwapSolver(Solver):
                 self.scheduler.biased_C.step()
                 self.scheduler.debiased_C.step()
 
+    def evaluate(self):
+        fetcher_val = self.loaders.val
+        #self._load_checkpoint(self.args.total_iter, 'debias')
+        self._load_checkpoint(15000, 'debias')
+
+        total_acc_b, total_acc_d, valid_attrwise_acc_b, valid_attrwise_acc_d = self.validation(fetcher_val)
+        self.report_validation(valid_attrwise_acc_b, total_acc_b, 0, which='bias_test', save_in_result=True)
+        self.report_validation(valid_attrwise_acc_d, total_acc_d, 0, which='debias_test', save_in_result=True)

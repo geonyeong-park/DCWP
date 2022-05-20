@@ -1,8 +1,6 @@
 import os
 import torch
-from torch.utils.data.dataset import Dataset, Subset
-from torchvision import transforms as T
-from data.transforms import transforms
+from torch.utils.data.dataset import Dataset
 from glob import glob
 from PIL import Image
 

@@ -4,22 +4,17 @@ import time
 import datetime
 from munch import Munch
 import logging
-import numpy as np
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 from torch.utils import data
+import torch.nn.functional as F
 
-from util.checkpoint import CheckpointIO
-from util.params import config
 import util.utils as utils
-from util.utils import MultiDimAverageMeter
 from data.data_loader import InputFetcher
-from model.build_models import build_model
-from training.loss import GeneralizedCELoss
-from training.solver import Solver
 from data.data_loader import get_original_loader, get_val_loader
+from model.build_models import build_model
+from training.solver import Solver
+from prune.Loss import DebiasedSupConLoss
 
 
 class PruneSolver(Solver):
@@ -47,8 +42,10 @@ class PruneSolver(Solver):
         self.scheduler_main = Munch() # Used in retraining
         if args.do_lr_scheduling:
             for net in self.nets.keys():
-                self.scheduler_main[net] = torch.optim.lr_scheduler.MultiStepLR(
-                    self.optims[net], milestones=args.lr_decay_step_main, gamma=args.lr_gamma_main)
+                self.scheduler_main[net] = torch.optim.lr_scheduler.StepLR(
+                    self.optims[net], step_size=args.lr_decay_step_main, gamma=args.lr_gamma_main)
+
+        self.con_criterion = DebiasedSupConLoss()
 
     def sparsity_regularizer(self, token='gumbel_pi'):
         reg = 0.
@@ -106,7 +103,7 @@ class PruneSolver(Solver):
         for idx in subsampled_idx:
             wrong_label[idx] = 1
 
-        sampling_weight = wrong_label if not args.MRM else torch.ones_like(wrong_label)
+        sampling_weight = wrong_label if not args.uniform_weight else torch.ones_like(wrong_label)
         balanced_loader = get_original_loader(args, sampling_weight=sampling_weight)
 
         fetcher = InputFetcher(balanced_loader)
@@ -118,10 +115,13 @@ class PruneSolver(Solver):
         for i in range(iters):
             inputs = next(fetcher)
             idx, x, label, fname = inputs.index, inputs.x, inputs.y, inputs.fname
-            pred = self.nets.classifier(x)
+            bias_label = torch.index_select(wrong_label, 0, idx.long())
+
+            pred, feature = self.nets.classifier(x, feature=True)
             loss_main = self.criterion(pred, label).mean()
             loss_reg = self.sparsity_regularizer()
-            loss = loss_main + args.lambda_sparse * loss_reg
+            loss_con = self.con_criterion(F.normalize(feature, dim=1).unsqueeze(1), label, bias_label)
+            loss = loss_main + args.lambda_sparse * loss_reg + args.lambda_con_prune * loss_con
 
             self._reset_grad()
             loss.backward()
@@ -132,10 +132,11 @@ class PruneSolver(Solver):
                 elapsed = time.time() - start_time
                 elapsed = str(datetime.timedelta(seconds=elapsed))[:-7]
                 log = "Elapsed time [%s], Iteration [%i/%i], LR [%.4f], "\
-                    "Loss_main [%.6f] Loss_reg [%.6f]" % (elapsed, i+1, iters,
-                                                          optims.classifier.param_groups[-1]['lr'],
-                                                          loss_main.item(),
-                                                          loss_reg.item())
+                    "Loss_main [%.6f] Loss_reg [%.6f] Loss_con [%.6f]" % (elapsed, i+1, iters,
+                                                                          optims.classifier.param_groups[-1]['lr'],
+                                                                          loss_main.item(),
+                                                                          loss_reg.item(),
+                                                                          loss_con.item())
                 print(log)
 
                 total = 0
@@ -162,10 +163,10 @@ class PruneSolver(Solver):
                 self.nets.classifier.pruning_switch(True)
                 self.nets.classifier.freeze_switch(False)
 
-    def retrain(self, iters):
+    def retrain(self, iters, freeze=True):
         args = self.args
         nets = self.nets
-        optims = self.optims_main # Train only pruning parameter
+        optims = self.optims_main # Train only weight parameter
 
         wrong_label = torch.load(ospj(self.args.checkpoint_dir, 'wrong_index.pth'))
         print('Number of wrong samples: ', wrong_label.sum())
@@ -179,13 +180,17 @@ class PruneSolver(Solver):
         start_time = time.time()
 
         self.nets.classifier.pruning_switch(False)
-        self.nets.classifier.freeze_switch(True)
+        self.nets.classifier.freeze_switch(freeze)
 
         for i in range(iters):
             inputs = next(fetcher)
             idx, x, label, fname = inputs.index, inputs.x, inputs.y, inputs.fname
-            pred = self.nets.classifier(x)
-            loss = self.criterion(pred, label).mean()  #TODO: loss_con
+            bias_label = torch.index_select(wrong_label, 0, idx.long())
+
+            pred, feature = self.nets.classifier(x, feature=True)
+            loss_main = self.criterion(pred, label).mean()  #TODO: loss_con
+            loss_con = self.con_criterion(F.normalize(feature, dim=1).unsqueeze(1), label, bias_label)
+            loss = loss_main + args.lambda_con_retrain * loss_con
 
             self._reset_grad()
             loss.backward()
@@ -196,7 +201,10 @@ class PruneSolver(Solver):
                 elapsed = time.time() - start_time
                 elapsed = str(datetime.timedelta(seconds=elapsed))[:-7]
                 log = "Elapsed time [%s], Iteration [%i/%i], LR [%.4f], "\
-                    "Loss_main [%.6f] " % (elapsed, i+1, iters, optims.classifier.param_groups[-1]['lr'], loss.item())
+                    "Loss_main [%.6f] Loss_con [%.6f] " % (elapsed, i+1, iters,
+                                                           optims.classifier.param_groups[-1]['lr'],
+                                                           loss_main.item(),
+                                                           loss_con.item())
                 print(log)
 
             # save model checkpoints
@@ -213,7 +221,7 @@ class PruneSolver(Solver):
     def train(self):
         logging.info('=== Start training ===')
         """
-        0. (optional) Pretrain model. Save initial and pretrained ckpt
+        0. Pretrain model. Save initial and pretrained ckpt
         1. Load pretrained model. Select wrong data
         2. Build balanced dataset. Train pruning parameters
         3. Reload initial ckpt and apply pruning
@@ -231,7 +239,6 @@ class PruneSolver(Solver):
             self.train_ERM(args.pretrain_iter)
             self._load_checkpoint(args.pretrain_iter, 'pretrain')
 
-
         if os.path.exists(ospj(args.checkpoint_dir, 'wrong_index.pth')):
             print('Upweight ckpt exists.')
         else:
@@ -239,12 +246,15 @@ class PruneSolver(Solver):
             self.save_wrong_idx(loader)
 
         assert os.path.exists(ospj(args.checkpoint_dir, 'wrong_index.pth'))
-        try:
-            self._load_checkpoint(args.pruning_iter, 'prune')
-            print('Pruning parameter ckpt exists. Start retraining...')
-        except:
-            print('Pruning parameter ckpt does not exist. Start pruning...')
-            self.train_PRUNE(args.pruning_iter)
+
+        if args.mode != 'JTT': # Only our method and MRM
+            try:
+                self._load_checkpoint(args.pruning_iter, 'prune')
+                print('Pruning parameter ckpt exists. Start retraining...')
+            except:
+                print('Pruning parameter ckpt does not exist. Start pruning...')
+                self.train_PRUNE(args.pruning_iter)
+            #TODO: Reinitialization for JTT fails. Run original implementations of JTT
 
         if self.args.reinitialize:
             reinit_dict = torch.load(ospj(args.checkpoint_dir, '{:06d}_{}_nets.ckpt'.format(0, 'initial')))['classifier']
@@ -254,6 +264,15 @@ class PruneSolver(Solver):
             self.nets.classifier.load_state_dict(reinit_dict)
             print('Reinitialized model from ', ospj(args.checkpoint_dir, '{:06d}_{}_nets.ckpt'.format(0, 'initial')))
 
-        self.retrain(args.retrain_iter)
+        self.retrain(args.retrain_iter, freeze=True if args.mode != 'JTT' else False)
         print('Finished training')
+
+    def evaluate(self):
+        fetcher_val = self.loaders.val
+        self._load_checkpoint(self.args.pruning_iter, 'retrain')
+        self.nets.classifier.pruning_switch(False)
+        self.nets.classifier.freeze_switch(True if self.args.mode != 'JTT' else False)
+
+        total_acc, valid_attrwise_acc = self.validation(fetcher_val)
+        self.report_validation(valid_attrwise_acc, total_acc, 0, which='Test', save_in_result=True)
 

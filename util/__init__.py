@@ -28,16 +28,23 @@ def save_config(args):
         json.dump(config, f, indent=2)
 
 def modify_args_for_baselines(args):
-    if args.mode == 'featureswap':
-        args.lambda_swap = 1
-        args.lambda_dis_align = 1
-        args.lambda_swap_align = 1
-
-        args.total_iters = 50000
+    if args.mode == 'featureswap' or args.mode == 'ERM':
+        """
+        Since featureswap and ERM performs better in Adam setting,
+        we reports adam results
+        """
+        args.total_iter = 17000
         args.swap_iter = 10000
         args.lr = 1e-3
         args.lr_decay_step = 10000
         args.lr_gamma = 0.5
+    elif args.mode == 'JTT':
+        args.select_with_GCE = False
+        args.lambda_con_retrain = 0
+    elif args.mode == 'MRM':
+        args.select_with_GCE = False
+        args.uniform_weight = True
 
+    print(f'----- [args.mode] Hyperparameters modified ------')
     return args
 

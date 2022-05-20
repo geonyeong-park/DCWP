@@ -4,11 +4,9 @@ import time
 import datetime
 from munch import Munch
 import logging
-import numpy as np
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from util.checkpoint import CheckpointIO
 from util.params import config
@@ -110,7 +108,8 @@ class Solver(nn.Module):
         self.nets.classifier.train()
         return total_acc, accs
 
-    def report_validation(self, valid_attrwise_acc, valid_acc, step, which='bias'):
+    def report_validation(self, valid_attrwise_acc, valid_acc,
+                          step=0, which='bias', save_in_result=False):
         eye_tsr = torch.eye(self.attr_dims[0]).long()
         valid_acc_align = valid_attrwise_acc[eye_tsr == 1].mean().item()
         valid_acc_conflict = valid_attrwise_acc[eye_tsr == 0].mean().item()
@@ -123,6 +122,9 @@ class Solver(nn.Module):
         log += ' '.join(['%s: [%.4f]' % (key, value) for key, value in all_acc.items()])
         print(log)
         logging.info(log)
+        if save_in_result:
+            with open(os.path.join(self.args.result_dir, 'test.txt'), "a") as f:
+                f.write(log)
 
     def train_ERM(self, iters):
         logging.info('=== Start training ===')
@@ -178,3 +180,6 @@ class Solver(nn.Module):
             if self.args.do_lr_scheduling:
                 self.scheduler.classifier.step()
                 self.scheduler.biased_classifier.step()
+
+    def train(self):
+        self.train_ERM(self.args.pretrain_iter)

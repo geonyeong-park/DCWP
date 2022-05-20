@@ -1,16 +1,10 @@
 import os
 import torch
-from torch.utils.data.dataset import Dataset, Subset
 from torch.utils.data import WeightedRandomSampler
 from torch.utils import data
-from torchvision import transforms as T
 from munch import Munch
 from data.transforms import transforms, use_preprocess
 from data.dataset import CMNISTDataset, CIFAR10Dataset, bFFHQDataset, IdxDataset
-from glob import glob
-from PIL import Image
-
-#torch.utils.data.WeightedRandomSampler(weights, num_samples, replacement=True, generator=None)
 
 
 dataset_name_dict = {'cifar10c': CIFAR10Dataset,
@@ -29,6 +23,7 @@ def get_original_loader(args, return_dataset=False, sampling_weight=None):
     else:
         dataset = IdxDataset(dataset)
         if sampling_weight is not None:
+            # replacement = False if sampling_weight.sum() > args.batch_size else True
             sampler = WeightedRandomSampler(sampling_weight, args.batch_size, replacement=False)
             return data.DataLoader(dataset=dataset,
                                    batch_size=args.batch_size,

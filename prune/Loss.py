@@ -43,14 +43,17 @@ class DebiasedSupConLoss(nn.Module):
         batch_size = features.shape[0]
         if labels is None and biased_label is None:
             label_mask = torch.eye(batch_size, dtype=torch.float32).to(device)
-        elif labels is not None and biased_label is not None:
+        elif labels is not None:
             labels = labels.contiguous().view(-1, 1)
             if labels.shape[0] != batch_size:
                 raise ValueError('Num of labels does not match num of features')
             label_mask = torch.eq(labels, labels.T)
-            bias_mask = torch.logical_or(biased_label, biased_label.T)
-            #bias_mask = torch.ne(biased_label, biased_label.T)
-            mask = label_mask & bias_mask
+            if biased_label is not None:
+                bias_mask = torch.logical_or(biased_label, biased_label.T)
+                #bias_mask = torch.ne(biased_label, biased_label.T)
+                mask = label_mask & bias_mask
+            else:
+                mask = label_mask
             mask = mask.float().to(device)
         else:
             raise ValueError
