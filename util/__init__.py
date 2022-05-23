@@ -45,6 +45,6 @@ def modify_args_for_baselines(args):
         args.select_with_GCE = False
         args.uniform_weight = True
 
-    print(f'----- [args.mode] Hyperparameters modified ------')
+    print(f'----- [{args.mode}] Hyperparameters modified ------')
     return args
 

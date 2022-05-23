@@ -269,7 +269,7 @@ class PruneSolver(Solver):
 
     def evaluate(self):
         fetcher_val = self.loaders.val
-        self._load_checkpoint(self.args.pruning_iter, 'retrain')
+        self._load_checkpoint(self.args.retrain_iter, 'retrain')
         self.nets.classifier.pruning_switch(False)
         self.nets.classifier.freeze_switch(True if self.args.mode != 'JTT' else False)
 

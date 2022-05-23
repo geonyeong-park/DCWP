@@ -23,3 +23,12 @@ class ERMSolver(Solver):
 
     def train(self):
         self.train_ERM(self.args.total_iter)
+
+    def evaluate(self):
+        fetcher_val = self.loaders.val
+        self._load_checkpoint(self.args.total_iter, 'pretrain')
+        self.nets.classifier.pruning_switch(False)
+        self.nets.classifier.freeze_switch(False)
+
+        total_acc, valid_attrwise_acc = self.validation(fetcher_val)
+        self.report_validation(valid_attrwise_acc, total_acc, 0, which='Test', save_in_result=True)

@@ -22,12 +22,8 @@ def main(args):
     if args.mode == 'prune':
         solver = PruneSolver(args)
     elif args.mode == 'JTT':
-        args.select_with_GCE = False
-        args.lambda_con_retrain = 0
         solver = PruneSolver(args)
     elif args.mode == 'MRM':
-        args.select_with_GCE = False
-        args.uniform_weight = True
         solver = PruneSolver(args)
     elif args.mode == 'featureswap':
         solver = FeatureSwapSolver(args)
