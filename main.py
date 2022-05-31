@@ -49,7 +49,7 @@ if __name__ == '__main__':
 
     # Data arguments
     parser.add_argument('--data', type=str, default='cmnist',
-                        choices=['cmnist', 'cifar10c', 'bffhq'])
+                        choices=['cmnist', 'cifar10c', 'bffhq', 'cub'])
     parser.add_argument('--cmnist_use_mlp', default=False, action='store_true')
     parser.add_argument('--conflict_pct', type=float, default=5., choices=[0.5, 1., 2., 5.],
                         help='Percent of bias-conflicting data')
@@ -65,7 +65,7 @@ if __name__ == '__main__':
     # training arguments
     parser.add_argument('--batch_size', type=int, default=256,
                         help='Batch size for training')
-    parser.add_argument('--do_lr_scheduling', default=True)
+    parser.add_argument('--no_lr_scheduling', default=False, action='store_true')
 
 
     # Pretraining
@@ -103,6 +103,10 @@ if __name__ == '__main__':
                         help='Number of workers used in DataLoader')
     parser.add_argument('--seed', type=int, default=7777,
                         help='Seed for random number generator')
+    parser.add_argument('--imagenet', default=False, action='store_true')
+    parser.add_argument('--supervised', default=False, action='store_true',
+                        help='Use true bias label or not')
+
 
     # directory for training
     parser.add_argument('--train_root_dir', type=str, default='/home/user/research/dataset')

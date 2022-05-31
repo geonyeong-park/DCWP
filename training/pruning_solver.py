@@ -27,12 +27,22 @@ class PruneSolver(Solver):
         for net, m in self.nets.items():
             prune_param = [p for n,p in m.named_parameters() if 'gumbel_pi' in n]
             main_param = [p for n,p in m.named_parameters() if 'gumbel_pi' not in n]
+
+            self.optims_main[net] = torch.optim.Adam(
+                params=self.nets[net].parameters(),
+                lr=args.lr_main,
+                betas=(args.beta1, args.beta2),
+                weight_decay=0
+            )
+
+            """
             self.optims_main[net] = torch.optim.SGD(
                 main_param,
                 lr=args.lr_main,
                 momentum=0.9,
                 weight_decay=args.weight_decay
             )
+            """
 
             self.optims_mask[net] = torch.optim.Adam(
                 prune_param,
@@ -40,7 +50,7 @@ class PruneSolver(Solver):
             )
 
         self.scheduler_main = Munch() # Used in retraining
-        if args.do_lr_scheduling:
+        if not args.no_lr_scheduling:
             for net in self.nets.keys():
                 self.scheduler_main[net] = torch.optim.lr_scheduler.StepLR(
                     self.optims[net], step_size=args.lr_decay_step_main, gamma=args.lr_gamma_main)
@@ -61,10 +71,12 @@ class PruneSolver(Solver):
         iterator = enumerate(loader)
         total_wrong, total_num = 0, 0
         wrong_idx = torch.empty(0).to(self.device)
+        debias_idx = torch.empty(0).to(self.device) # True debiased data. Not used in training
 
         for _, (idx, data, attr, fname) in iterator:
             idx = idx.to(self.device)
             label = attr[:, 0].to(self.device)
+            bias_label = attr[:, 1].to(self.device)
             data = data.to(self.device)
 
             with torch.no_grad():
@@ -75,18 +87,38 @@ class PruneSolver(Solver):
 
                 pred = logit.data.max(1, keepdim=True)[1].squeeze(1)
                 wrong = (pred != label).long()
+                debiased = (label != bias_label).long()
 
                 total_wrong += wrong.sum()
                 total_num += wrong.shape[0]
                 wrong_idx = torch.cat((wrong_idx, idx[wrong == 1])).long()
+                debias_idx = torch.cat((debias_idx, idx[debiased == 1])).long()
+
         assert total_wrong == len(wrong_idx)
         print('Number of wrong samples: ', total_wrong)
         wrong_label = torch.zeros(total_num).to(self.device)
+        debias_label = torch.zeros(total_num).to(self.device)
+
         for idx in wrong_idx:
             wrong_label[idx] = 1
+        for idx in debias_idx:
+            debias_label[idx] = 1
+
+        spur_precision = torch.sum(
+                (wrong_label == 1) & (debias_label == 1)
+            ) / torch.sum(wrong_label)
+        print("Spurious precision", spur_precision)
+        spur_recall = torch.sum(
+                (wrong_label == 1) & (debias_label == 1)
+            ) / torch.sum(debias_label)
+        print("Spurious recall", spur_recall)
 
         wrong_idx_path = ospj(self.args.checkpoint_dir, 'wrong_index.pth')
-        torch.save(wrong_label, wrong_idx_path)
+
+        if not self.args.supervised:
+            torch.save(wrong_label, wrong_idx_path)
+        else:
+            torch.save(debias_label, wrong_idx_path)
         print('Saved wrong index label.')
         self.nets.classifier.train()
         self.nets.biased_classifier.train()
@@ -215,7 +247,7 @@ class PruneSolver(Solver):
                 total_acc, valid_attrwise_acc = self.validation(fetcher_val)
                 self.report_validation(valid_attrwise_acc, total_acc, i, which='retrain')
 
-            if self.args.do_lr_scheduling:
+            if not self.args.no_lr_scheduling:
                 self.scheduler_main.classifier.step()
 
     def train(self):
@@ -270,6 +302,7 @@ class PruneSolver(Solver):
     def evaluate(self):
         fetcher_val = self.loaders.val
         self._load_checkpoint(self.args.retrain_iter, 'retrain')
+        print('Load model from ', ospj(self.args.checkpoint_dir, '{:06d}_{}_nets.ckpt'.format(self.args.retrain_iter, 'retrain')))
         self.nets.classifier.pruning_switch(False)
         self.nets.classifier.freeze_switch(True if self.args.mode != 'JTT' else False)
 

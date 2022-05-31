@@ -9,8 +9,9 @@ import torch
 import torch.nn as nn
 
 from util.checkpoint import CheckpointIO
-from util.params import config
 import util.utils as utils
+from data.transforms import num_classes
+
 from util.utils import MultiDimAverageMeter
 from data.data_loader import InputFetcher
 from model.build_models import build_model
@@ -24,7 +25,7 @@ class Solver(nn.Module):
         super().__init__()
         self.args = args
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.num_classes = config[args.data]['num_classes']
+        self.num_classes = num_classes[args.data]
         self.attr_dims = [self.num_classes, self.num_classes]
 
         self.nets = build_model(args)
@@ -35,15 +36,23 @@ class Solver(nn.Module):
 
         self.optims = Munch() # Used in pretraining
         for net in self.nets.keys():
+            self.optims[net] = torch.optim.Adam(
+                params=self.nets[net].parameters(),
+                lr=args.lr_pre,
+                betas=(args.beta1, args.beta2),
+                weight_decay=0
+            )
+            """
             self.optims[net] = torch.optim.SGD(
                 self.nets[net].parameters(),
                 lr=args.lr_pre,
                 momentum=0.9,
                 weight_decay=args.weight_decay
             )
+            """
 
         self.scheduler = Munch()
-        if args.do_lr_scheduling:
+        if not args.no_lr_scheduling:
             for net in self.nets.keys():
                 self.scheduler[net] = torch.optim.lr_scheduler.StepLR(
                     self.optims[net], step_size=args.lr_decay_step_pre, gamma=args.lr_gamma_pre)
@@ -102,6 +111,9 @@ class Solver(nn.Module):
             attr = attr[:, [0, 1]]
             attrwise_acc_meter.add(correct.cpu(), attr.cpu())
 
+        print(attrwise_acc_meter.cum.view(self.attr_dims[0], -1))
+        print(attrwise_acc_meter.cnt.view(self.attr_dims[0], -1))
+
         total_acc = total_correct / float(total_num)
         accs = attrwise_acc_meter.get_mean()
 
@@ -116,7 +128,7 @@ class Solver(nn.Module):
 
         all_acc = dict()
         for acc, key in zip([valid_acc, valid_acc_align, valid_acc_conflict],
-                                ['Acc/total', 'Acc/align', 'Acc/conflict']):
+                            ['Acc/total', 'Acc/align', 'Acc/conflict']):
             all_acc[key] = acc
         log = f"({which} Validation) Iteration [{step+1}], "
         log += ' '.join(['%s: [%.4f]' % (key, value) for key, value in all_acc.items()])
@@ -177,7 +189,7 @@ class Solver(nn.Module):
                 total_acc, valid_attrwise_acc = self.validation(fetcher_val)
                 self.report_validation(valid_attrwise_acc, total_acc, i, which='main')
 
-            if self.args.do_lr_scheduling:
+            if not self.args.no_lr_scheduling:
                 self.scheduler.classifier.step()
                 self.scheduler.biased_classifier.step()
 

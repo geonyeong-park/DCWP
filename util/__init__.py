@@ -1,7 +1,6 @@
 import os
 from os.path import join as ospj
 import json
-from util.params import config
 
 def setup(args):
     fname = args.exp_name
@@ -24,8 +23,6 @@ def setup(args):
 def save_config(args):
     with open(os.path.join(args.log_dir, 'args.txt'), 'a') as f:
         json.dump(args.__dict__, f, indent=2)
-    with open(os.path.join(args.log_dir, 'param.txt'), 'a') as f:
-        json.dump(config, f, indent=2)
 
 def modify_args_for_baselines(args):
     if args.mode == 'featureswap' or args.mode == 'ERM':
@@ -38,13 +35,17 @@ def modify_args_for_baselines(args):
         args.lr = 1e-3
         args.lr_decay_step = 10000
         args.lr_gamma = 0.5
+        print(f'----- [{args.mode}] Hyperparameters modified ------')
+
     elif args.mode == 'JTT':
         args.select_with_GCE = False
         args.lambda_con_retrain = 0
+        print(f'----- [{args.mode}] Hyperparameters modified ------')
+
     elif args.mode == 'MRM':
         args.select_with_GCE = False
         args.uniform_weight = True
+        print(f'----- [{args.mode}] Hyperparameters modified ------')
 
-    print(f'----- [{args.mode}] Hyperparameters modified ------')
     return args
 

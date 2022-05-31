@@ -3,8 +3,17 @@ from torchvision import transforms as T
 use_preprocess = {
     'cmnist': False,
     'bffhq': True,
-    'cifar10c': True
+    'cifar10c': True,
+    'cub': True
 }
+
+num_classes = {
+    'cmnist': 10,
+    'bffhq': 2,
+    'cifar10c': 10,
+    'cub': 2
+}
+
 
 transforms = {
 
@@ -41,23 +50,44 @@ transforms = {
             "valid": T.Compose([T.Resize(32), T.ToTensor()]),
             "test": T.Compose([T.Resize(32), T.ToTensor()])
             },
+        "cub": {
+            "train": T.Compose([
+                T.Resize(256),
+                T.CenterCrop(224),
+                T.ToTensor(),
+                T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            ]),
+
+            "valid": T.Compose([
+                T.Resize(256),
+                T.CenterCrop(224),
+                T.ToTensor(),
+                T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            ]),
+
+            "test": T.Compose([
+                T.Resize(256),
+                T.CenterCrop(224),
+                T.ToTensor(),
+                T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            ]),
+        },
         "bffhq": {
             "train": T.Compose([
-                T.Resize((224,224)),
-                T.RandomCrop(224, padding=4),
+                T.Resize(128),
                 T.RandomHorizontalFlip(),
                 T.ToTensor(),
-                T.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)), #TODO: no activation function for output
+                T.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
                 ]
             ),
             "valid": T.Compose([
-                T.Resize((224,224)),
+                T.Resize(128),
                 T.ToTensor(),
                 T.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
                 ]
             ),
             "test": T.Compose([
-                T.Resize((224,224)),
+                T.Resize(128),
                 T.ToTensor(),
                 T.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
                 ]

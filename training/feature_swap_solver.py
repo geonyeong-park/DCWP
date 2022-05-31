@@ -28,7 +28,7 @@ class FeatureSwapSolver(Solver):
             )
 
         self.scheduler = Munch()
-        if args.do_lr_scheduling:
+        if not args.no_lr_scheduling:
             for net in self.nets.keys():
                 self.scheduler[net] = torch.optim.lr_scheduler.StepLR(
                     self.optims[net], step_size=args.lr_decay_step, gamma=args.lr_gamma)
@@ -88,11 +88,14 @@ class FeatureSwapSolver(Solver):
         return total_acc_b, total_acc_d, accs_b, accs_d
 
     def set_loss_ema(self, dataset):
-        train_target_attr = []
-        for data in dataset.data:
-            fname = os.path.relpath(data, dataset.header_dir)
-            train_target_attr.append(int(fname.split('_')[-2]))
-        train_target_attr = torch.LongTensor(train_target_attr)
+        try:
+            train_target_attr = dataset.y_array
+        except:
+            train_target_attr = []
+            for data in dataset.data:
+                fname = os.path.relpath(data, dataset.header_dir)
+                train_target_attr.append(int(fname.split('_')[-2]))
+            train_target_attr = torch.LongTensor(train_target_attr)
 
         self.sample_loss_ema_b = utils.EMA(train_target_attr, num_classes=self.num_classes, alpha=0.7)
         self.sample_loss_ema_d = utils.EMA(train_target_attr, num_classes=self.num_classes, alpha=0.7)
@@ -218,7 +221,7 @@ class FeatureSwapSolver(Solver):
                 self.report_validation(valid_attrwise_acc_b, total_acc_b, i, which='bias')
                 self.report_validation(valid_attrwise_acc_d, total_acc_d, i, which='debias')
 
-            if self.args.do_lr_scheduling:
+            if not self.args.no_lr_scheduling:
                 self.scheduler.biased_F.step()
                 self.scheduler.debiased_F.step()
                 self.scheduler.biased_C.step()

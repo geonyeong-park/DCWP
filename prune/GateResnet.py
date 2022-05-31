@@ -290,45 +290,47 @@ class ResNet(nn.Module):
         self.freeze = turn_on
 
 
-def GateResNet18(pretrained=False):
+def GateResNet18(IMAGENET_pretrained=False, n_classes=10):
     net = ResNet(BasicBlock, [2, 2, 2, 2])
-    if pretrained:
+    if IMAGENET_pretrained:
         url = URL_DICT['resnet18']
         print(f'Load {url}')
         checkpoint = load_url(url)
         net.load_state_dict(checkpoint, strict=False)
+    net = modify_last_layer(net, n_classes)
     return net
 
-def GateResNet34(IMAGENET_pretrained=False):
+def GateResNet34(IMAGENET_pretrained=False, n_classes=10):
     net = ResNet(BasicBlock, [3, 4, 6, 3])
     if IMAGENET_pretrained:
         url = URL_DICT['resnet34']
         print(f'Load {url}')
         checkpoint = load_url(url)
         net.load_state_dict(checkpoint, strict=False)
+    net = modify_last_layer(net, n_classes)
     return net
 
-def GateResNet50(IMAGENET_pretrained=False):
+def GateResNet50(IMAGENET_pretrained=False, n_classes=10):
     net = ResNet(Bottleneck, [3, 4, 6, 3])
     if IMAGENET_pretrained:
         url = URL_DICT['resnet50']
         print(f'Load {url}')
         checkpoint = load_url(url)
         net.load_state_dict(checkpoint, strict=False)
+    net = modify_last_layer(net, n_classes)
     return net
 
-def GateResNet101(pretrained=False):
+def GateResNet101(IMAGENET_pretrained=False, n_classes=10):
     net = ResNet(Bottleneck, [3, 4, 23, 3])
-    if pretrained:
+    if IMAGENET_pretrained:
         url = URL_DICT['resnet101']
         print(f'Load {url}')
         checkpoint = load_url(url)
         net.load_state_dict(checkpoint, strict=False)
+    net = modify_last_layer(net, n_classes)
     return net
 
-
-def test():
-    net = GateResNet34()
-    print(net)
-
-test()
+def modify_last_layer(net, n_classes=10):
+    d = net.fc.in_features
+    net.fc = GateMLP(d, n_classes)
+    return net

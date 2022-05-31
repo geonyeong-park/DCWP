@@ -3,6 +3,7 @@ import torch
 from torch.utils.data.dataset import Dataset
 from glob import glob
 from PIL import Image
+import pandas as pd
 
 
 class CMNISTDataset(Dataset):
@@ -37,23 +38,60 @@ class CMNISTDataset(Dataset):
 
         return image, attr, self.data[index] # attr=(class_label, bias_label)
 
+
+class CUBDataset(Dataset):
+    """
+    CUB dataset (already cropped and centered).
+    NOTE: metadata_df is one-indexed.
+    """
+    def __init__(self, root, name='cub', split='train', transform=None, conflict_pct=5):
+        self.name = name
+        self.transform = transform
+        self.root = root
+        self.split_dict = {
+            "train": 0,
+            "val": 1,
+            "test": 2,
+        }
+
+        self.header_dir = os.path.join(root, self.name, 'data/waterbird_complete95_forest2water2')
+
+        # Read in metadata
+        print(f"Reading '{os.path.join(self.header_dir, 'metadata.csv')}'")
+        metadata_df = pd.read_csv(
+            os.path.join(self.header_dir, 'metadata.csv'))
+        self.metadata_df = metadata_df[metadata_df["split"] == self.split_dict[split]]
+
+        self.confounder_array = self.metadata_df["place"].values
+        self.y_array = self.metadata_df["y"].values
+        self.filename_array = self.metadata_df["img_filename"].values
+
+    def __len__(self):
+        return len(self.y_array)
+
+    def __getitem__(self, index):
+        attr = torch.LongTensor([int(self.y_array[index]), int(self.confounder_array[index])])
+
+        img_filename = os.path.join(self.header_dir,
+                                    self.filename_array[index])
+        image = Image.open(img_filename).convert("RGB")
+
+        if self.transform is not None:
+            image = self.transform(image)
+
+        return image, attr, img_filename
+
+
 class CIFAR10Dataset(CMNISTDataset):
-    def __init__(self, root, name='cmnist', split='train', transform=None, conflict_pct=5):
+    def __init__(self, root, name='cifar10c', split='train', transform=None, conflict_pct=5):
         super(CIFAR10Dataset, self).__init__(root, name, split, transform, conflict_pct)
 
 class bFFHQDataset(CMNISTDataset):
-    def __init__(self, root, name='cmnist', split='train', transform=None, conflict_pct=5):
+    def __init__(self, root, name='bffhq', split='train', transform=None, conflict_pct=5):
         super(bFFHQDataset, self).__init__(root, name, split, transform, conflict_pct)
-
         if split=='test':
             self.data = glob(os.path.join(root, self.name, 'test', "*"))
-            data_conflict = []
-            for path in self.data:
-                target_label = path.split('/')[-1].split('.')[0].split('_')[1]
-                bias_label = path.split('/')[-1].split('.')[0].split('_')[2]
-                if target_label != bias_label:
-                    data_conflict.append(path)
-            self.data = data_conflict
+
 
 class IdxDataset(Dataset):
     def __init__(self, dataset):
@@ -64,3 +102,5 @@ class IdxDataset(Dataset):
 
     def __getitem__(self, idx):
         return (idx, *self.dataset[idx])
+
+
