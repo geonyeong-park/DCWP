@@ -23,6 +23,12 @@ class CMNISTDataset(Dataset):
 
             self.data = self.align + self.conflict
 
+            train_target_attr = []
+            for data in self.data:
+                fname = os.path.relpath(data, self.header_dir)
+                train_target_attr.append(int(fname.split('_')[-2]))
+            self.y_array = torch.LongTensor(train_target_attr)
+
         elif split=='test':
             self.data = glob(os.path.join(root, self.name, 'test',"*","*"))
 
@@ -74,6 +80,47 @@ class CUBDataset(Dataset):
 
         img_filename = os.path.join(self.header_dir,
                                     self.filename_array[index])
+        image = Image.open(img_filename).convert("RGB")
+
+        if self.transform is not None:
+            image = self.transform(image)
+
+        return image, attr, img_filename
+
+
+class BARDataset(Dataset):
+    label_name = {
+        'climbing': 0,
+        'diving': 1,
+        'fishing': 2,
+        'pole vaulting': 3,
+        'racing': 4,
+        'throwing': 5
+    }
+    def __init__(self, root, name='bar', split='train', transform=None, conflict_pct=5):
+        super(BARDataset, self).__init__()
+        self.name = name
+        self.transform = transform
+        self.root = root
+
+        self.header_dir = os.path.join(root, self.name, split)
+        self.data = glob(os.path.join(self.header_dir, "*"))
+
+        train_target_attr = []
+        for data in self.data:
+            fname = os.path.relpath(data, self.header_dir)
+            label = BARDataset.label_name[fname.split('_')[0]]
+            train_target_attr.append(label)
+        self.y_array = torch.LongTensor(train_target_attr)
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, index):
+        # BARDataset does not have ground truth bias label. Replace with dummy -1 instead.
+        attr = torch.LongTensor([int(self.y_array[index]), -1])
+
+        img_filename = self.data[index]
         image = Image.open(img_filename).convert("RGB")
 
         if self.transform is not None:

@@ -34,8 +34,6 @@ def main(args):
     else:
         raise NotImplementedError
 
-    #TODO: if pseudo_label file does not exists, train biased model first
-
     if args.phase == 'train':
         solver.train()
     else:
@@ -49,7 +47,7 @@ if __name__ == '__main__':
 
     # Data arguments
     parser.add_argument('--data', type=str, default='cmnist',
-                        choices=['cmnist', 'cifar10c', 'bffhq', 'cub'])
+                        choices=['cmnist', 'cifar10c', 'bffhq', 'cub', 'bar'])
     parser.add_argument('--cmnist_use_mlp', default=False, action='store_true')
     parser.add_argument('--conflict_pct', type=float, default=5., choices=[0.5, 1., 2., 5.],
                         help='Percent of bias-conflicting data')
@@ -106,6 +104,8 @@ if __name__ == '__main__':
     parser.add_argument('--imagenet', default=False, action='store_true')
     parser.add_argument('--supervised', default=False, action='store_true',
                         help='Use true bias label or not')
+    parser.add_argument('--pseudo_label_method', type=str, required=False,
+                        choices=['wrong', 'score'], default='wrong')
 
 
     # directory for training

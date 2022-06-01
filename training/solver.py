@@ -111,8 +111,8 @@ class Solver(nn.Module):
             attr = attr[:, [0, 1]]
             attrwise_acc_meter.add(correct.cpu(), attr.cpu())
 
-        print(attrwise_acc_meter.cum.view(self.attr_dims[0], -1))
-        print(attrwise_acc_meter.cnt.view(self.attr_dims[0], -1))
+        #print(attrwise_acc_meter.cum.view(self.attr_dims[0], -1))
+        #print(attrwise_acc_meter.cnt.view(self.attr_dims[0], -1))
 
         total_acc = total_correct / float(total_num)
         accs = attrwise_acc_meter.get_mean()
@@ -154,6 +154,7 @@ class Solver(nn.Module):
             # fetch images and labels
             inputs = next(fetcher)
             idx, x, label, fname = inputs.index, inputs.x, inputs.y, inputs.fname
+
             pred = self.nets.classifier(x)
             pred_bias = self.nets.biased_classifier(x)
 

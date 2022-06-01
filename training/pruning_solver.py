@@ -5,9 +5,11 @@ import datetime
 from munch import Munch
 import logging
 
+import numpy as np
 import torch
 from torch.utils import data
 import torch.nn.functional as F
+import torch.nn as nn
 
 import util.utils as utils
 from data.data_loader import InputFetcher
@@ -71,7 +73,8 @@ class PruneSolver(Solver):
         iterator = enumerate(loader)
         total_wrong, total_num = 0, 0
         wrong_idx = torch.empty(0).to(self.device)
-        debias_idx = torch.empty(0).to(self.device) # True debiased data. Not used in training
+        debias_idx = torch.empty(0).to(self.device)
+        fname_full = []
 
         for _, (idx, data, attr, fname) in iterator:
             idx = idx.to(self.device)
@@ -94,8 +97,13 @@ class PruneSolver(Solver):
                 wrong_idx = torch.cat((wrong_idx, idx[wrong == 1])).long()
                 debias_idx = torch.cat((debias_idx, idx[debiased == 1])).long()
 
+            fname_full = fname_full + fname
+
         assert total_wrong == len(wrong_idx)
         print('Number of wrong samples: ', total_wrong)
+        self.confirm_pseudo_label(wrong_idx, debias_idx, total_num)
+
+    def confirm_pseudo_label(self, wrong_idx, debias_idx, total_num):
         wrong_label = torch.zeros(total_num).to(self.device)
         debias_label = torch.zeros(total_num).to(self.device)
 
@@ -122,6 +130,47 @@ class PruneSolver(Solver):
         print('Saved wrong index label.')
         self.nets.classifier.train()
         self.nets.biased_classifier.train()
+
+    def save_high_score_idx(self, loader):
+        self.nets.classifier.eval()
+        self.nets.biased_classifier.eval()
+
+        iterator = enumerate(loader)
+        total_num = 0
+        total_idx = torch.empty(0).to(self.device)
+        score_array = torch.empty(0).to(self.device)
+        debias_idx = torch.empty(0).to(self.device)
+        fname_full = []
+
+        for _, (idx, data, attr, fname) in iterator:
+            idx = idx.to(self.device)
+            label = attr[:, 0].to(self.device)
+            bias_label = attr[:, 1].to(self.device)
+            data = data.to(self.device)
+            debiased = (label != bias_label).long()
+
+            with torch.no_grad():
+                if self.args.select_with_GCE:
+                    logit = self.nets.biased_classifier(data)
+                else:
+                    raise ValueError("'score' mode should use GCE biased model")
+
+                pred = logit.data.max(1, keepdim=True)[1].squeeze(1)
+                correct = (pred == label).float()
+                max_softmax = nn.Softmax()(logit).max(dim=1).values
+                score = torch.abs(correct - max_softmax)
+
+                total_num += correct.shape[0]
+                total_idx = torch.cat((total_idx, idx)).long()
+                score_array = torch.cat((score_array, score))
+                debias_idx = torch.cat((debias_idx, idx[debiased == 1])).long()
+
+        mean_score = score_array.mean()
+        print(mean_score)
+        wrong_array = (score_array > mean_score).long()
+        wrong_idx = total_idx[wrong_array == 1]
+        print('Number of high score samples: ', len(wrong_idx))
+        self.confirm_pseudo_label(wrong_idx, debias_idx, total_num)
 
     def train_PRUNE(self, iters):
         args = self.args
@@ -275,7 +324,10 @@ class PruneSolver(Solver):
             print('Upweight ckpt exists.')
         else:
             print('Upweight ckpt does not exist. Creating...')
-            self.save_wrong_idx(loader)
+            if args.pseudo_label_method == 'wrong':
+                self.save_wrong_idx(loader)
+            elif args.pseudo_label_method == 'score':
+                self.save_high_score_idx(loader)
 
         assert os.path.exists(ospj(args.checkpoint_dir, 'wrong_index.pth'))
 

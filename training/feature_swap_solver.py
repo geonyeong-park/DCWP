@@ -91,11 +91,7 @@ class FeatureSwapSolver(Solver):
         try:
             train_target_attr = dataset.y_array
         except:
-            train_target_attr = []
-            for data in dataset.data:
-                fname = os.path.relpath(data, dataset.header_dir)
-                train_target_attr.append(int(fname.split('_')[-2]))
-            train_target_attr = torch.LongTensor(train_target_attr)
+            raise ValueError('Please define y_array for your dataset')
 
         self.sample_loss_ema_b = utils.EMA(train_target_attr, num_classes=self.num_classes, alpha=0.7)
         self.sample_loss_ema_d = utils.EMA(train_target_attr, num_classes=self.num_classes, alpha=0.7)

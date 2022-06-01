@@ -4,19 +4,20 @@ use_preprocess = {
     'cmnist': False,
     'bffhq': True,
     'cifar10c': True,
-    'cub': True
+    'cub': True,
+    'bar': True
 }
 
 num_classes = {
     'cmnist': 10,
     'bffhq': 2,
     'cifar10c': 10,
-    'cub': 2
+    'cub': 2,
+    'bar': 6
 }
 
 
 transforms = {
-
     'original': {
         "cmnist": {
             "train": T.Compose([
@@ -32,16 +33,6 @@ transforms = {
                 T.ToTensor(),
             ])
             },
-        "bffhq": {
-            "train": T.Compose([T.Resize((224,224)), T.ToTensor()]), #TODO: 224->128
-            "valid": T.Compose([T.Resize((224,224)), T.ToTensor()]),
-            "test": T.Compose([T.Resize((224,224)), T.ToTensor()])
-            },
-        "cifar10c": {
-            "train": T.Compose([T.Resize(32), T.ToTensor(),]),
-            "valid": T.Compose([T.Resize(32), T.ToTensor(),]),
-            "test": T.Compose([T.Resize(32), T.ToTensor(),]),
-            }
     },
 
     'preprocess': {
@@ -116,5 +107,28 @@ transforms = {
                 ]
             ),
         },
+
+        "bar": {
+            "train": T.Compose([
+                T.Resize(256),
+                T.CenterCrop(224),
+                T.RandomHorizontalFlip(),
+                T.ToTensor(),
+                T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            ]),
+
+            "valid": T.Compose([
+                T.Resize((224,224)),
+                T.ToTensor(),
+                T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            ]),
+
+            "test": T.Compose([
+                T.Resize((224,224)),
+                T.ToTensor(),
+                T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            ]),
+        },
+
     }
 }

@@ -4,12 +4,14 @@ from torch.utils.data import WeightedRandomSampler
 from torch.utils import data
 from munch import Munch
 from data.transforms import transforms, use_preprocess
-from data.dataset import CMNISTDataset, CIFAR10Dataset, bFFHQDataset, CUBDataset, IdxDataset
+from data.dataset import CMNISTDataset, CIFAR10Dataset, bFFHQDataset, CUBDataset, \
+    BARDataset, IdxDataset
 
 
 dataset_name_dict = {'cifar10c': CIFAR10Dataset,
                      'cmnist': CMNISTDataset,
                      'bffhq': bFFHQDataset,
+                     'bar': BARDataset,
                      'cub': CUBDataset}
 
 def get_original_loader(args, return_dataset=False, sampling_weight=None):
