@@ -30,21 +30,20 @@ class PruneSolver(Solver):
             prune_param = [p for n,p in m.named_parameters() if 'gumbel_pi' in n]
             main_param = [p for n,p in m.named_parameters() if 'gumbel_pi' not in n]
 
-            self.optims_main[net] = torch.optim.Adam(
-                params=self.nets[net].parameters(),
-                lr=args.lr_main,
-                betas=(args.beta1, args.beta2),
-                weight_decay=0
-            )
-
-            """
-            self.optims_main[net] = torch.optim.SGD(
-                main_param,
-                lr=args.lr_main,
-                momentum=0.9,
-                weight_decay=args.weight_decay
-            )
-            """
+            if args.optimizer == 'Adam':
+                self.optims_main[net] = torch.optim.Adam(
+                    params=main_param, #self.nets[net].parameters(),
+                    lr=args.lr_main,
+                    betas=(args.beta1, args.beta2),
+                    weight_decay=0
+                )
+            elif args.optimizer == 'SGD':
+                self.optims_main[net] = torch.optim.SGD(
+                    main_param,
+                    lr=args.lr_main,
+                    momentum=0.9,
+                    weight_decay=args.weight_decay
+                )
 
             self.optims_mask[net] = torch.optim.Adam(
                 prune_param,
@@ -55,7 +54,7 @@ class PruneSolver(Solver):
         if not args.no_lr_scheduling:
             for net in self.nets.keys():
                 self.scheduler_main[net] = torch.optim.lr_scheduler.StepLR(
-                    self.optims[net], step_size=args.lr_decay_step_main, gamma=args.lr_gamma_main)
+                    self.optims_main[net], step_size=args.lr_decay_step_main, gamma=args.lr_gamma_main)
 
         self.con_criterion = DebiasedSupConLoss()
 
@@ -289,10 +288,10 @@ class PruneSolver(Solver):
                 print(log)
 
             # save model checkpoints
-            if (i+1) % args.save_every == 0:
+            if (i+1) % args.save_every_retrain == 0:
                 self._save_checkpoint(step=i+1, token='retrain')
 
-            if (i+1) % args.eval_every == 0:
+            if (i+1) % args.eval_every_retrain == 0:
                 total_acc, valid_attrwise_acc = self.validation(fetcher_val)
                 self.report_validation(valid_attrwise_acc, total_acc, i, which='retrain')
 
@@ -302,11 +301,10 @@ class PruneSolver(Solver):
     def train(self):
         logging.info('=== Start training ===')
         """
-        0. Pretrain model. Save initial and pretrained ckpt
-        1. Load pretrained model. Select wrong data
+        0. Pretrain model. Save pretrained ckpt
+        1. Load pretrained model and pseudo bias label
         2. Build balanced dataset. Train pruning parameters
-        3. Reload initial ckpt and apply pruning
-        4. Retrain with wrong data
+        3. Resume training with learned pruning parameters
         """
 
         args = self.args
@@ -323,6 +321,7 @@ class PruneSolver(Solver):
         if os.path.exists(ospj(args.checkpoint_dir, 'wrong_index.pth')):
             print('Upweight ckpt exists.')
         else:
+            # NOT USED
             print('Upweight ckpt does not exist. Creating...')
             if args.pseudo_label_method == 'wrong':
                 self.save_wrong_idx(loader)
@@ -331,16 +330,16 @@ class PruneSolver(Solver):
 
         assert os.path.exists(ospj(args.checkpoint_dir, 'wrong_index.pth'))
 
-        if args.mode != 'JTT': # Only our method and MRM
-            try:
-                self._load_checkpoint(args.pruning_iter, 'prune')
-                print('Pruning parameter ckpt exists. Start retraining...')
-            except:
-                print('Pruning parameter ckpt does not exist. Start pruning...')
-                self.train_PRUNE(args.pruning_iter)
-            #TODO: Reinitialization for JTT fails. Run original implementations of JTT
+        try:
+            self._load_checkpoint(args.pruning_iter, 'prune')
+            print('Pruning parameter ckpt exists. Start retraining...')
+        except:
+            print('Pruning parameter ckpt does not exist. Start pruning...')
+            self.train_PRUNE(args.pruning_iter)
+        #TODO: Failed to reproduce JTT. Run original implementations of JTT
 
         if self.args.reinitialize:
+            # NOT USED. Reinitialization performs worse
             reinit_dict = torch.load(ospj(args.checkpoint_dir, '{:06d}_{}_nets.ckpt'.format(0, 'initial')))['classifier']
             mask_dict = torch.load(ospj(args.checkpoint_dir, '{:06d}_{}_nets.ckpt'.format(args.pruning_iter, 'prune')))['classifier']
             pruning_dict = {k: v for k, v in mask_dict.items() if 'gumbel_pi' in k}
@@ -348,7 +347,7 @@ class PruneSolver(Solver):
             self.nets.classifier.load_state_dict(reinit_dict)
             print('Reinitialized model from ', ospj(args.checkpoint_dir, '{:06d}_{}_nets.ckpt'.format(0, 'initial')))
 
-        self.retrain(args.retrain_iter, freeze=True if args.mode != 'JTT' else False)
+        self.retrain(args.retrain_iter, freeze=True)
         print('Finished training')
 
     def evaluate(self):
@@ -356,7 +355,7 @@ class PruneSolver(Solver):
         self._load_checkpoint(self.args.retrain_iter, 'retrain')
         print('Load model from ', ospj(self.args.checkpoint_dir, '{:06d}_{}_nets.ckpt'.format(self.args.retrain_iter, 'retrain')))
         self.nets.classifier.pruning_switch(False)
-        self.nets.classifier.freeze_switch(True if self.args.mode != 'JTT' else False)
+        self.nets.classifier.freeze_switch(True)
 
         total_acc, valid_attrwise_acc = self.validation(fetcher_val)
         self.report_validation(valid_attrwise_acc, total_acc, 0, which='Test', save_in_result=True)

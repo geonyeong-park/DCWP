@@ -37,11 +37,6 @@ def modify_args_for_baselines(args):
         args.lr_gamma = 0.5
         print(f'----- [{args.mode}] Hyperparameters modified ------')
 
-    elif args.mode == 'JTT':
-        args.select_with_GCE = False
-        args.lambda_con_retrain = 0
-        print(f'----- [{args.mode}] Hyperparameters modified ------')
-
     elif args.mode == 'MRM':
         args.select_with_GCE = False
         args.uniform_weight = True

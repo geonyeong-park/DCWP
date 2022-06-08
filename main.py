@@ -21,8 +21,6 @@ def main(args):
 
     if args.mode == 'prune':
         solver = PruneSolver(args)
-    elif args.mode == 'JTT':
-        solver = PruneSolver(args)
     elif args.mode == 'MRM':
         solver = PruneSolver(args)
     elif args.mode == 'featureswap':
@@ -43,7 +41,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--mode', type=str, required=True,
-                        choices=['prune', 'featureswap', 'LfF', 'JTT', 'MRM', 'ERM'])
+                        choices=['prune', 'featureswap', 'LfF', 'MRM', 'ERM'])
 
     # Data arguments
     parser.add_argument('--data', type=str, default='cmnist',
@@ -65,7 +63,6 @@ if __name__ == '__main__':
                         help='Batch size for training')
     parser.add_argument('--no_lr_scheduling', default=False, action='store_true')
 
-
     # Pretraining
     parser.add_argument('--lr_decay_step_pre', type=int, default=600)
     parser.add_argument('--lr_gamma_pre', type=float, default=0.1)
@@ -77,6 +74,8 @@ if __name__ == '__main__':
     parser.add_argument('--pruning_iter', type=int, default=2000)
 
     # Retraining
+    parser.add_argument('--optimizer', type=str, required=False,
+                        choices=['Adam', 'SGD'], default='Adam')
     parser.add_argument('--lr_main', type=float, default=1e-2)
     parser.add_argument('--retrain_iter', type=int, default=500)
     parser.add_argument('--lr_decay_step_main', type=int, default=600)
@@ -106,6 +105,8 @@ if __name__ == '__main__':
                         help='Use true bias label or not')
     parser.add_argument('--pseudo_label_method', type=str, required=False,
                         choices=['wrong', 'score'], default='wrong')
+    parser.add_argument('--eta', type=float, default=0.05)
+    parser.add_argument('--tau', type=float, default=0.8)
 
 
     # directory for training
@@ -123,6 +124,8 @@ if __name__ == '__main__':
     parser.add_argument('--print_every', type=int, default=500)
     parser.add_argument('--save_every', type=int, default=500)
     parser.add_argument('--eval_every', type=int, default=500)
+    parser.add_argument('--save_every_retrain', type=int, default=100)
+    parser.add_argument('--eval_every_retrain', type=int, default=100)
 
     args = parser.parse_args()
     args = modify_args_for_baselines(args)

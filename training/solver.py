@@ -36,20 +36,20 @@ class Solver(nn.Module):
 
         self.optims = Munch() # Used in pretraining
         for net in self.nets.keys():
-            self.optims[net] = torch.optim.Adam(
-                params=self.nets[net].parameters(),
-                lr=args.lr_pre,
-                betas=(args.beta1, args.beta2),
-                weight_decay=0
-            )
-            """
-            self.optims[net] = torch.optim.SGD(
-                self.nets[net].parameters(),
-                lr=args.lr_pre,
-                momentum=0.9,
-                weight_decay=args.weight_decay
-            )
-            """
+            if args.optimizer == 'Adam':
+                self.optims[net] = torch.optim.Adam(
+                    params=self.nets[net].parameters(),
+                    lr=args.lr_pre,
+                    betas=(args.beta1, args.beta2),
+                    weight_decay=0
+                )
+            elif args.optimizer == 'SGD':
+                self.optims[net] = torch.optim.SGD(
+                    self.nets[net].parameters(),
+                    lr=args.lr_pre,
+                    momentum=0.9,
+                    weight_decay=args.weight_decay
+                )
 
         self.scheduler = Munch()
         if not args.no_lr_scheduling:
@@ -69,7 +69,8 @@ class Solver(nn.Module):
 
         # BUILD LOADERS
         self.loaders = Munch(train=get_original_loader(args),
-                             val=get_val_loader(args))
+                             val=get_val_loader(args),
+                             trainset=get_original_loader(args, return_dataset=True))
 
     def _reset_grad(self):
         def _recursive_reset(optims_dict):
@@ -87,6 +88,58 @@ class Solver(nn.Module):
     def _load_checkpoint(self, step, token, which=None, return_fname=False):
         for ckptio in self.ckptios:
             ckptio.load(step, token, which, return_fname)
+
+    def update_pseudo_label(self, bias_score_array, loader, iters, pseudo_every):
+        self.nets.biased_classifier.eval()
+
+        iterator = enumerate(loader)
+        debias_idx = torch.empty(0).to(self.device)
+
+        for _, (idx, data, attr, fname) in iterator:
+            idx = idx.to(self.device)
+            label = attr[:, 0].to(self.device)
+            bias_label = attr[:, 1].to(self.device)
+            data = data.to(self.device)
+            debiased = (label != bias_label).long()
+
+            with torch.no_grad():
+                logit = self.nets.biased_classifier(data)
+                bias_prob = nn.Softmax()(logit)[torch.arange(logit.size(0)), label]
+                bias_score = 1 - bias_prob
+
+                for i, v in enumerate(idx):
+                    bias_score_array[v] += bias_score[i] * pseudo_every / iters
+
+                debias_idx = torch.cat((debias_idx, idx[debiased == 1])).long()
+        self.nets.biased_classifier.train()
+
+        return bias_score_array, debias_idx
+
+    def confirm_pseudo_label_(self, bias_score_array, debias_idx, total_num):
+        pseudo_label = (bias_score_array > self.args.tau).long()
+        debias_label = torch.zeros(total_num).to(self.device)
+
+        for idx in debias_idx:
+            debias_label[idx] = 1
+
+        spur_precision = torch.sum(
+                (pseudo_label == 1) & (debias_label == 1)
+            ) / torch.sum(pseudo_label)
+        print("Spurious precision", spur_precision)
+        spur_recall = torch.sum(
+                (pseudo_label == 1) & (debias_label == 1)
+            ) / torch.sum(debias_label)
+        print("Spurious recall", spur_recall)
+
+        wrong_idx_path = ospj(self.args.checkpoint_dir, 'wrong_index.pth')
+
+        if not self.args.supervised:
+            torch.save(pseudo_label, wrong_idx_path)
+        else:
+            torch.save(debias_label, wrong_idx_path)
+        print('Saved pseudo label.')
+        self.nets.classifier.train()
+        self.nets.biased_classifier.train()
 
     def validation(self, fetcher):
         self.nets.classifier.eval()
@@ -146,6 +199,12 @@ class Solver(nn.Module):
 
         fetcher = InputFetcher(self.loaders.train)
         fetcher_val = self.loaders.val
+        fetcher_train = self.loaders.train
+
+        total_num = len(self.loaders.trainset)
+        bias_score_array = torch.zeros(total_num).to(self.device)
+        pseudo_every = int(total_num / args.batch_size)
+
         start_time = time.time()
 
         self._save_checkpoint(step=0, token='initial')
@@ -159,7 +218,9 @@ class Solver(nn.Module):
             pred_bias = self.nets.biased_classifier(x)
 
             loss = self.criterion(pred, label).mean()
-            loss_bias = self.bias_criterion(pred_bias, label).mean()
+            loss_bias = self.criterion(pred_bias, label)
+            bias_prob = nn.Softmax()(pred_bias)[torch.arange(pred_bias.size(0)), label]
+            loss_bias = loss_bias[bias_prob > args.eta].mean() # Choose samples with high confidence
 
             self._reset_grad()
             loss.backward()
@@ -190,9 +251,14 @@ class Solver(nn.Module):
                 total_acc, valid_attrwise_acc = self.validation(fetcher_val)
                 self.report_validation(valid_attrwise_acc, total_acc, i, which='main')
 
+            if (i+1) % pseudo_every == 0:
+                bias_score_array, debias_idx = self.update_pseudo_label(bias_score_array, fetcher_train, iters, pseudo_every)
+
             if not self.args.no_lr_scheduling:
                 self.scheduler.classifier.step()
                 self.scheduler.biased_classifier.step()
+
+        self.confirm_pseudo_label_(bias_score_array, debias_idx, total_num)
 
     def train(self):
         self.train_ERM(self.args.pretrain_iter)
