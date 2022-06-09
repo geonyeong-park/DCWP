@@ -19,6 +19,7 @@ import argparse
 import warnings
 from pathlib import Path
 from itertools import chain
+import pickle
 
 from tqdm import tqdm
 
@@ -74,6 +75,32 @@ class MultiDimAverageMeter(object):
     def reset(self):
         self.cum.zero_()
         self.cnt.zero_()
+
+class ValidLogger(object):
+    phase_token = ['ERM', 'prune', 'retrain', 'ratio']
+
+    def __init__(self, fname):
+        os.makedirs(os.path.dirname(fname), exist_ok=True)
+        self.fname = fname
+        self.log = {
+            'ERM': [],
+            'prune': [],
+            'retrain': [],
+            'ratio': [] # Ratio of survived weights during pruning
+        }
+
+    def append(self, val, which='ERM'):
+        self.log[which].append(val)
+
+    def save(self):
+        with open(self.fname, 'wb') as f:
+            pickle.dump(self.log, f)
+            print(f'saved validation log in {self.fname}')
+
+    def load(self):
+        with open(self.fname, 'rb') as f:
+            log = pickle.load(f)
+            return log
 
 class EMA:
     def __init__(self, label, num_classes=None, alpha=0.9):

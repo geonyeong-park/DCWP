@@ -219,6 +219,11 @@ class PruneSolver(Solver):
                                                                           loss_con.item())
                 print(log)
 
+            # save model checkpoints
+            if (i+1) % args.save_every == 0:
+                self._save_checkpoint(step=i+1, token='prune')
+
+            if (i+1) % args.eval_every == 0:
                 total = 0
                 active = 0
                 for n, p in self.nets.classifier.named_parameters():
@@ -229,13 +234,10 @@ class PruneSolver(Solver):
                         total += total_n
                         active += active_n
                         if active_n==0: print(n)
-                print('ratio:', active/total)
+                ratio = active / total
+                print('ratio:', ratio)
+                self.valid_logger.append(ratio, which='ratio')
 
-            # save model checkpoints
-            if (i+1) % args.save_every == 0:
-                self._save_checkpoint(step=i+1, token='prune')
-
-            if (i+1) % args.eval_every == 0:
                 self.nets.classifier.pruning_switch(False)
                 self.nets.classifier.freeze_switch(True)
                 total_acc, valid_attrwise_acc = self.validation(fetcher_val)
@@ -294,6 +296,7 @@ class PruneSolver(Solver):
             if (i+1) % args.eval_every_retrain == 0:
                 total_acc, valid_attrwise_acc = self.validation(fetcher_val)
                 self.report_validation(valid_attrwise_acc, total_acc, i, which='retrain')
+                self.valid_logger.append(total_acc.item(), which='retrain')
 
             if not self.args.no_lr_scheduling:
                 self.scheduler_main.classifier.step()
@@ -348,6 +351,7 @@ class PruneSolver(Solver):
             print('Reinitialized model from ', ospj(args.checkpoint_dir, '{:06d}_{}_nets.ckpt'.format(0, 'initial')))
 
         self.retrain(args.retrain_iter, freeze=True)
+        self.valid_logger.save()
         print('Finished training')
 
     def evaluate(self):

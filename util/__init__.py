@@ -25,7 +25,7 @@ def save_config(args):
         json.dump(args.__dict__, f, indent=2)
 
 def modify_args_for_baselines(args):
-    if args.mode == 'featureswap' or args.mode == 'ERM':
+    if args.mode == 'featureswap':
         """
         Since featureswap and ERM performs better in Adam setting,
         we reports adam results

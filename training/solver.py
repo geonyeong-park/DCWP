@@ -12,7 +12,7 @@ from util.checkpoint import CheckpointIO
 import util.utils as utils
 from data.transforms import num_classes
 
-from util.utils import MultiDimAverageMeter
+from util.utils import MultiDimAverageMeter, ValidLogger
 from data.data_loader import InputFetcher
 from model.build_models import build_model
 from training.loss import GeneralizedCELoss
@@ -62,6 +62,7 @@ class Solver(nn.Module):
         ]
         logging.basicConfig(filename=os.path.join(args.log_dir, 'training.log'),
                             level=logging.INFO)
+        self.valid_logger = ValidLogger(ospj(args.log_dir, 'valid_acc.pkl'))
 
         self.to(self.device)
         self.bias_criterion = GeneralizedCELoss()
@@ -250,6 +251,7 @@ class Solver(nn.Module):
             if (i+1) % args.eval_every == 0:
                 total_acc, valid_attrwise_acc = self.validation(fetcher_val)
                 self.report_validation(valid_attrwise_acc, total_acc, i, which='main')
+                self.valid_logger.append(total_acc.item(), which='ERM')
 
             if (i+1) % pseudo_every == 0:
                 bias_score_array, debias_idx = self.update_pseudo_label(bias_score_array, fetcher_train, iters, pseudo_every)
@@ -259,6 +261,7 @@ class Solver(nn.Module):
                 self.scheduler.biased_classifier.step()
 
         self.confirm_pseudo_label_(bias_score_array, debias_idx, total_num)
+        self.valid_logger.save()
 
     def train(self):
         self.train_ERM(self.args.pretrain_iter)
