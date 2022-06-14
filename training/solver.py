@@ -8,6 +8,7 @@ import logging
 import torch
 import torch.nn as nn
 
+from sklearn.manifold import TSNE
 from util.checkpoint import CheckpointIO
 import util.utils as utils
 from data.transforms import num_classes
@@ -63,6 +64,7 @@ class Solver(nn.Module):
         logging.basicConfig(filename=os.path.join(args.log_dir, 'training.log'),
                             level=logging.INFO)
         self.valid_logger = ValidLogger(ospj(args.log_dir, 'valid_acc.pkl'))
+        self.tsne = TSNE(n_components=2, perplexity=20, init='pca', n_iter=3000)
 
         self.to(self.device)
         self.bias_criterion = GeneralizedCELoss()
@@ -265,3 +267,29 @@ class Solver(nn.Module):
 
     def train(self):
         self.train_ERM(self.args.pretrain_iter)
+
+    def _tsne(self, loader):
+        # Plot t-SNE of hidden feature
+        loader_iter = enumerate(loader)
+        img = torch.empty(0).to(self.device)
+        label = torch.empty(0).to(self.device)
+        bias = torch.empty(0).to(self.device)
+
+        for i, val in loader_iter:
+            _, data, attr, _ = val
+            label = torch.cat([label,
+                               attr[:, 0].to(self.device)])
+            bias = torch.cat([bias,
+                              attr[:, 1].to(self.device)])
+            img = torch.cat([img,
+                             data.to(self.device)])
+            if i > 1: break
+        label = label.data.cpu().numpy()
+        bias = bias.data.cpu().numpy()
+
+        h = self.nets.classifier.extract(img)
+        tsne = self.tsne.fit_transform(h.data.cpu().numpy())
+
+        sample_path = lambda x: os.path.join(self.args.log_dir, f'{x}-tSNE.jpg')
+        utils.plot_embedding(tsne, label, sample_path('class-aligned'))
+        utils.plot_embedding(tsne, bias, sample_path('bias-aligned'))

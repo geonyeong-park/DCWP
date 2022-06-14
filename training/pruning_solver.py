@@ -359,8 +359,10 @@ class PruneSolver(Solver):
         self._load_checkpoint(self.args.retrain_iter, 'retrain')
         print('Load model from ', ospj(self.args.checkpoint_dir, '{:06d}_{}_nets.ckpt'.format(self.args.retrain_iter, 'retrain')))
         self.nets.classifier.pruning_switch(False)
-        self.nets.classifier.freeze_switch(True)
+        self.nets.classifier.freeze_switch(False)
 
         total_acc, valid_attrwise_acc = self.validation(fetcher_val)
         self.report_validation(valid_attrwise_acc, total_acc, 0, which='Test', save_in_result=True)
+
+        self._tsne(fetcher_val)
 

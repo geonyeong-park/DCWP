@@ -283,6 +283,10 @@ class ResNet(nn.Module):
     def forward(self, x: Tensor, feature=False) -> Tensor:
         return self._forward_impl(x, self.pruning, self.freeze, feature)
 
+    def extract(self, x: Tensor) -> Tensor:
+        _, feature = self._forward_impl(x, self.pruning, self.freeze, feature=True)
+        return feature
+
     def pruning_switch(self, turn_on=False):
         self.pruning = turn_on
 

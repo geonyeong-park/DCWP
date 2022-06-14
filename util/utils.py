@@ -22,6 +22,7 @@ from itertools import chain
 import pickle
 
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 import numpy as np
 import torch
@@ -136,18 +137,25 @@ def denormalize(x):
     out = (x + 1) / 2
     return out.clamp_(0, 1)
 
-@torch.no_grad()
-def debug_image(nets, args, step, z_dim, num_classes=10, denormalize=False, device='cuda'):
-    filename = ospj(args.result_dir, '%06d_generation.jpg' % (step))
-    z = torch.randn([10*num_classes, z_dim], device=device)
-    y_g = np.concatenate([np.array([i]*10) for i in range(num_classes)])
-    c = torch.eye(num_classes, device=device)[y_g]
-    x_fake = nets.generator(z, c)
-    save_image(x_fake, num_classes, filename, denormalize=denormalize)
-    del(x_fake)
-
 def save_image(x, ncol, filename, denormalize=False):
     if denormalize: x = denormalize(x)
     vutils.save_image(x.cpu(), filename, nrow=ncol, padding=0)
 
+def plot_embedding(X, label, save_path):
+    x_min, x_max = np.min(X, 0), np.max(X, 0)
+    X = (X - x_min) / (x_max - x_min)
+    num_color = np.max(label) + 1
+    cmap = plt.cm.get_cmap('rainbow', num_color)
 
+    fig = plt.figure(figsize=(10,10))
+    ax = fig.add_subplot(111)
+
+    plt.scatter(X[:, 0], X[:, 1], c=label, cmap='rainbow')
+
+    plt.xticks([]), plt.yticks([])
+    #legend = ['source domain {}'.format(i+1) for i in range(min(d), max(d))]
+    #legend[-1] = ['target domain']
+    #plt.legend(legend)
+
+    fig.savefig(save_path)
+    plt.close('all')

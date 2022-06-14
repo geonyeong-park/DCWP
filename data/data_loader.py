@@ -50,7 +50,7 @@ def get_val_loader(args):
     dataset = IdxDataset(dataset)
     return data.DataLoader(dataset=dataset,
                            batch_size=args.batch_size,
-                           shuffle=False,
+                           shuffle=True,
                            num_workers=args.num_workers,
                            pin_memory=True)
 
