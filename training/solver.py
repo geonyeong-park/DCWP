@@ -63,7 +63,13 @@ class Solver(nn.Module):
         ]
         logging.basicConfig(filename=os.path.join(args.log_dir, 'training.log'),
                             level=logging.INFO)
-        self.valid_logger = ValidLogger(ospj(args.log_dir, 'valid_acc.pkl'))
+
+
+        ########################################################
+        self.valid_logger = ValidLogger(ospj(args.log_dir, f'valid_acc_{args.pruning_iter}.pkl'))
+        ########################################################
+
+
         self.tsne = TSNE(n_components=2, perplexity=20, init='pca', n_iter=3000)
 
         self.to(self.device)
@@ -221,9 +227,12 @@ class Solver(nn.Module):
             pred_bias = self.nets.biased_classifier(x)
 
             loss = self.criterion(pred, label).mean()
-            loss_bias = self.criterion(pred_bias, label)
-            bias_prob = nn.Softmax()(pred_bias)[torch.arange(pred_bias.size(0)), label]
-            loss_bias = loss_bias[bias_prob > args.eta].mean() # Choose samples with high confidence
+            if args.pseudo_label_method == 'ensemble':
+                loss_bias = self.criterion(pred_bias, label)
+                bias_prob = nn.Softmax()(pred_bias)[torch.arange(pred_bias.size(0)), label]
+                loss_bias = loss_bias[bias_prob > args.eta].mean() # Choose samples with high confidence
+            else:
+                loss_bias = self.bias_criterion(pred_bias, label).mean()
 
             self._reset_grad()
             loss.backward()
@@ -262,7 +271,9 @@ class Solver(nn.Module):
                 self.scheduler.classifier.step()
                 self.scheduler.biased_classifier.step()
 
-        self.confirm_pseudo_label_(bias_score_array, debias_idx, total_num)
+        if args.pseudo_label_method == 'ensemble':
+            self.confirm_pseudo_label_(bias_score_array, debias_idx, total_num)
+
         self.valid_logger.save()
 
     def train(self):

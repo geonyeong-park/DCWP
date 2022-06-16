@@ -84,7 +84,7 @@ if __name__ == '__main__':
     parser.add_argument('--weight_decay', type=float, default=1e-4) #TODO: weight decay is important in JTT!
     parser.add_argument('--reinitialize', default=False, action='store_true') # MRM
     parser.add_argument('--uniform_weight', default=False, action='store_true') # MRM
-    parser.add_argument('--select_with_GCE', default=False, action='store_true')
+    parser.add_argument('--select_with_GCE', default=True, action='store_true')
 
     # For FeatureSwap
     parser.add_argument('--total_iter', type=int, default=20000)
@@ -104,7 +104,7 @@ if __name__ == '__main__':
     parser.add_argument('--supervised', default=False, action='store_true',
                         help='Use true bias label or not')
     parser.add_argument('--pseudo_label_method', type=str, required=False,
-                        choices=['wrong', 'score'], default='wrong')
+                        choices=['wrong', 'score', 'ensemble'], default='ensemble')
     parser.add_argument('--eta', type=float, default=0.05)
     parser.add_argument('--tau', type=float, default=0.8)
 

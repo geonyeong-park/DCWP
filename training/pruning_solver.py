@@ -226,17 +226,21 @@ class PruneSolver(Solver):
             if (i+1) % args.eval_every == 0:
                 total = 0
                 active = 0
+                layerwise = {}
                 for n, p in self.nets.classifier.named_parameters():
                     if 'gumbel_pi' in n:
                         active_n = (p>=0).sum().item()
                         total_n = torch.ones_like(p).sum().detach().item()
+                        layerwise[n] = active_n / total_n
 
                         total += total_n
                         active += active_n
-                        if active_n==0: print(n)
+                        if active_n == 0: raise ValueError('Warning: Dead layer')
+
                 ratio = active / total
                 print('ratio:', ratio)
                 self.valid_logger.append(ratio, which='ratio')
+                self.valid_logger.append(layerwise, which='layerwise_ratio')
 
                 self.nets.classifier.pruning_switch(False)
                 self.nets.classifier.freeze_switch(True)
@@ -324,7 +328,6 @@ class PruneSolver(Solver):
         if os.path.exists(ospj(args.checkpoint_dir, 'wrong_index.pth')):
             print('Upweight ckpt exists.')
         else:
-            # NOT USED
             print('Upweight ckpt does not exist. Creating...')
             if args.pseudo_label_method == 'wrong':
                 self.save_wrong_idx(loader)
@@ -340,6 +343,7 @@ class PruneSolver(Solver):
             print('Pruning parameter ckpt does not exist. Start pruning...')
             self.train_PRUNE(args.pruning_iter)
         #TODO: Failed to reproduce JTT. Run original implementations of JTT
+        self.valid_logger.save()
 
         if self.args.reinitialize:
             # NOT USED. Reinitialization performs worse

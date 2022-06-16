@@ -16,6 +16,6 @@ for s in ${seed[@]}; do
 
         CUDA_VISIBLE_DEVICES=$1 python main.py --mode prune --data $2 \
             --conflict_pct $conflit_pct --lambda_upweight $upweight \
-            --select_with_GCE --seed $s
+            --seed $s --optimizer SGD
     done
 done
