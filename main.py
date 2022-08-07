@@ -100,7 +100,7 @@ if __name__ == '__main__':
                         help='Number of workers used in DataLoader')
     parser.add_argument('--seed', type=int, default=7777,
                         help='Seed for random number generator')
-    parser.add_argument('--imagenet', default=False, action='store_true')
+    parser.add_argument('--imagenet', default=True, action='store_true')
     parser.add_argument('--supervised', default=False, action='store_true',
                         help='Use true bias label or not')
     parser.add_argument('--pseudo_label_method', type=str, required=False,

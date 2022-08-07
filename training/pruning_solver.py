@@ -219,10 +219,6 @@ class PruneSolver(Solver):
                                                                           loss_con.item())
                 print(log)
 
-            # save model checkpoints
-            if (i+1) % args.save_every == 0:
-                self._save_checkpoint(step=i+1, token='prune')
-
             if (i+1) % args.eval_every == 0:
                 total = 0
                 active = 0
@@ -248,6 +244,10 @@ class PruneSolver(Solver):
                 self.report_validation(valid_attrwise_acc, total_acc, i, which='prune')
                 self.nets.classifier.pruning_switch(True)
                 self.nets.classifier.freeze_switch(False)
+
+        # save model checkpoints
+        if (i+1) % args.save_every == 0:
+            self._save_checkpoint(step=i+1, token='prune')
 
     def retrain(self, iters, freeze=True):
         args = self.args

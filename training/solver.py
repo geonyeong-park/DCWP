@@ -255,10 +255,6 @@ class Solver(nn.Module):
                 print(log)
                 logging.info(log)
 
-            # save model checkpoints
-            if (i+1) % args.save_every == 0:
-                self._save_checkpoint(step=i+1, token='pretrain')
-
             if (i+1) % args.eval_every == 0:
                 total_acc, valid_attrwise_acc = self.validation(fetcher_val)
                 self.report_validation(valid_attrwise_acc, total_acc, i, which='main')
@@ -275,6 +271,10 @@ class Solver(nn.Module):
             self.confirm_pseudo_label_(bias_score_array, debias_idx, total_num)
 
         self.valid_logger.save()
+
+        # save model checkpoints
+        if (i+1) % args.save_every == 0:
+            self._save_checkpoint(step=i+1, token='pretrain')
 
     def train(self):
         self.train_ERM(self.args.pretrain_iter)
