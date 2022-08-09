@@ -65,9 +65,7 @@ class Solver(nn.Module):
                             level=logging.INFO)
 
 
-        ########################################################
         self.valid_logger = ValidLogger(ospj(args.log_dir, f'valid_acc_{args.pruning_iter}.pkl'))
-        ########################################################
 
 
         self.tsne = TSNE(n_components=2, perplexity=20, init='pca', n_iter=3000)
@@ -273,8 +271,7 @@ class Solver(nn.Module):
         self.valid_logger.save()
 
         # save model checkpoints
-        if (i+1) % args.save_every == 0:
-            self._save_checkpoint(step=i+1, token='pretrain')
+        self._save_checkpoint(step=i+1, token='pretrain')
 
     def train(self):
         self.train_ERM(self.args.pretrain_iter)

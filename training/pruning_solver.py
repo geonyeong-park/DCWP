@@ -246,8 +246,7 @@ class PruneSolver(Solver):
                 self.nets.classifier.freeze_switch(False)
 
         # save model checkpoints
-        if (i+1) % args.save_every == 0:
-            self._save_checkpoint(step=i+1, token='prune')
+        self._save_checkpoint(step=i+1, token='prune')
 
     def retrain(self, iters, freeze=True):
         args = self.args
@@ -363,10 +362,10 @@ class PruneSolver(Solver):
         self._load_checkpoint(self.args.retrain_iter, 'retrain')
         print('Load model from ', ospj(self.args.checkpoint_dir, '{:06d}_{}_nets.ckpt'.format(self.args.retrain_iter, 'retrain')))
         self.nets.classifier.pruning_switch(False)
-        self.nets.classifier.freeze_switch(False)
+        self.nets.classifier.freeze_switch(True)
 
         total_acc, valid_attrwise_acc = self.validation(fetcher_val)
         self.report_validation(valid_attrwise_acc, total_acc, 0, which='Test', save_in_result=True)
 
-        self._tsne(fetcher_val)
+        #self._tsne(fetcher_val)
 

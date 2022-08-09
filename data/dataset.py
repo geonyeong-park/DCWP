@@ -29,6 +29,10 @@ class CMNISTDataset(Dataset):
                 train_target_attr.append(int(fname.split('_')[-2]))
             self.y_array = torch.LongTensor(train_target_attr)
 
+        elif split == 'valid':
+            self.header_dir = os.path.join(root, self.name, self.conflict_token)
+            self.data = glob(os.path.join(self.header_dir, 'valid',"*","*"))
+
         elif split=='test':
             self.data = glob(os.path.join(root, self.name, 'test',"*","*"))
 
@@ -138,6 +142,9 @@ class bFFHQDataset(CMNISTDataset):
         super(bFFHQDataset, self).__init__(root, name, split, transform, conflict_pct)
         if split=='test':
             self.data = glob(os.path.join(root, self.name, 'test', "*"))
+
+        elif split=='valid':
+            self.data = glob(os.path.join(root, self.name, 'valid', "*"))
 
 
 class IdxDataset(Dataset):

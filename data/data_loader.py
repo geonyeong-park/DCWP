@@ -41,12 +41,12 @@ def get_original_loader(args, return_dataset=False, sampling_weight=None):
                                 num_workers=args.num_workers,
                                 pin_memory=True)
 
-def get_val_loader(args):
+def get_val_loader(args, split='test'):
     dataset_name = args.data
     transform = transforms['preprocess' if use_preprocess[dataset_name] else 'original'][dataset_name]['test']
     dataset_class = dataset_name_dict[dataset_name]
 
-    dataset = dataset_class(root=args.val_root_dir, split='test', transform=transform)
+    dataset = dataset_class(root=args.val_root_dir, split=split, transform=transform)
     dataset = IdxDataset(dataset)
     return data.DataLoader(dataset=dataset,
                            batch_size=args.batch_size,
