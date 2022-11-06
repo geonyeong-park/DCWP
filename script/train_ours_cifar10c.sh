@@ -1,6 +1,6 @@
 #!/bin/bash
 
-seed=(111 222 333 444)
+seed=(11 22 33 44)
 conflict=(0.5 1 2 5)
 weight=(80 50 30 10)
 

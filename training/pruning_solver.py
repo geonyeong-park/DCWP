@@ -130,47 +130,6 @@ class PruneSolver(Solver):
         self.nets.classifier.train()
         self.nets.biased_classifier.train()
 
-    def save_high_score_idx(self, loader):
-        self.nets.classifier.eval()
-        self.nets.biased_classifier.eval()
-
-        iterator = enumerate(loader)
-        total_num = 0
-        total_idx = torch.empty(0).to(self.device)
-        score_array = torch.empty(0).to(self.device)
-        debias_idx = torch.empty(0).to(self.device)
-        fname_full = []
-
-        for _, (idx, data, attr, fname) in iterator:
-            idx = idx.to(self.device)
-            label = attr[:, 0].to(self.device)
-            bias_label = attr[:, 1].to(self.device)
-            data = data.to(self.device)
-            debiased = (label != bias_label).long()
-
-            with torch.no_grad():
-                if self.args.select_with_GCE:
-                    logit = self.nets.biased_classifier(data)
-                else:
-                    raise ValueError("'score' mode should use GCE biased model")
-
-                pred = logit.data.max(1, keepdim=True)[1].squeeze(1)
-                correct = (pred == label).float()
-                max_softmax = nn.Softmax()(logit).max(dim=1).values
-                score = torch.abs(correct - max_softmax)
-
-                total_num += correct.shape[0]
-                total_idx = torch.cat((total_idx, idx)).long()
-                score_array = torch.cat((score_array, score))
-                debias_idx = torch.cat((debias_idx, idx[debiased == 1])).long()
-
-        mean_score = score_array.mean()
-        print(mean_score)
-        wrong_array = (score_array > mean_score).long()
-        wrong_idx = total_idx[wrong_array == 1]
-        print('Number of high score samples: ', len(wrong_idx))
-        self.confirm_pseudo_label(wrong_idx, debias_idx, total_num)
-
     def train_PRUNE(self, iters):
         args = self.args
         nets = self.nets
@@ -178,12 +137,17 @@ class PruneSolver(Solver):
 
         # Load and balance data
         wrong_label = torch.load(ospj(self.args.checkpoint_dir, 'wrong_index.pth'))
+        """
         remain = 1. - wrong_label
         subsampled_idx = remain.multinomial(min(int(wrong_label.sum() / self.attr_dims[1]), 1)).long()
         for idx in subsampled_idx:
             wrong_label[idx] = 1
+        """
 
-        sampling_weight = wrong_label if not args.uniform_weight else torch.ones_like(wrong_label)
+        upweight = torch.ones_like(wrong_label)
+        upweight[wrong_label == 1] = 80
+
+        sampling_weight = upweight if not args.uniform_weight else torch.ones_like(wrong_label)
         balanced_loader = get_original_loader(args, sampling_weight=sampling_weight)
 
         fetcher = InputFetcher(balanced_loader)
@@ -328,24 +292,26 @@ class PruneSolver(Solver):
             print('Upweight ckpt exists.')
         else:
             print('Upweight ckpt does not exist. Creating...')
-            if args.pseudo_label_method == 'wrong':
+            if args.pseudo_label_method == 'wrong' or args.mode == 'JTT':
+                if args.earlystop_iter is not None: self._load_checkpoint(args.earlystop_iter, 'pretrain')
                 self.save_wrong_idx(loader)
-            elif args.pseudo_label_method == 'score':
-                self.save_high_score_idx(loader)
+                self._load_checkpoint(args.pretrain_iter, 'pretrain')
+            else:
+                raise ValueError('No upweight ckpt')
 
         assert os.path.exists(ospj(args.checkpoint_dir, 'wrong_index.pth'))
 
-        try:
-            self._load_checkpoint(args.pruning_iter, 'prune')
-            print('Pruning parameter ckpt exists. Start retraining...')
-        except:
-            print('Pruning parameter ckpt does not exist. Start pruning...')
-            self.train_PRUNE(args.pruning_iter)
-        #TODO: Failed to reproduce JTT. Run original implementations of JTT
+        if args.mode != 'JTT':
+            try:
+                self._load_checkpoint(args.pruning_iter, 'prune')
+                print('Pruning parameter ckpt exists. Start retraining...')
+            except:
+                print('Pruning parameter ckpt does not exist. Start pruning...')
+                self.train_PRUNE(args.pruning_iter)
+
         self.valid_logger.save()
 
         if self.args.reinitialize:
-            # NOT USED. Reinitialization performs worse
             reinit_dict = torch.load(ospj(args.checkpoint_dir, '{:06d}_{}_nets.ckpt'.format(0, 'initial')))['classifier']
             mask_dict = torch.load(ospj(args.checkpoint_dir, '{:06d}_{}_nets.ckpt'.format(args.pruning_iter, 'prune')))['classifier']
             pruning_dict = {k: v for k, v in mask_dict.items() if 'gumbel_pi' in k}
@@ -353,7 +319,10 @@ class PruneSolver(Solver):
             self.nets.classifier.load_state_dict(reinit_dict)
             print('Reinitialized model from ', ospj(args.checkpoint_dir, '{:06d}_{}_nets.ckpt'.format(0, 'initial')))
 
-        self.retrain(args.retrain_iter, freeze=True)
+        if args.mode == 'JTT':
+            self._load_checkpoint(0, 'initial')
+
+        self.retrain(args.retrain_iter, freeze=True if args.mode != 'JTT' else False)
         self.valid_logger.save()
         print('Finished training')
 
@@ -367,5 +336,5 @@ class PruneSolver(Solver):
         total_acc, valid_attrwise_acc = self.validation(fetcher_val)
         self.report_validation(valid_attrwise_acc, total_acc, 0, which='Test', save_in_result=True)
 
-        #self._tsne(fetcher_val)
+        self._tsne(fetcher_val)
 

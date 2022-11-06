@@ -40,6 +40,17 @@ def modify_args_for_baselines(args):
     elif args.mode == 'MRM':
         args.select_with_GCE = False
         args.uniform_weight = True
+        args.reinitialize = True
+        args.lambda_upweight = 1
+        args.lambda_con_prune = 0
+        args.lambda_con_retrain = 0
+
+    elif args.mode == 'JTT':
+        args.select_with_GCE = False
+        args.lambda_con_prune = 0
+        args.lambda_con_retrain = 0
+
+
         print(f'----- [{args.mode}] Hyperparameters modified ------')
 
     return args

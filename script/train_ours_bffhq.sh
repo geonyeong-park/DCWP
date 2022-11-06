@@ -1,6 +1,6 @@
 #!/bin/bash
 
-seed=(111 222 333 444)
+seed=(11 22 33 44)
 
 
 for s in ${seed[@]}; do

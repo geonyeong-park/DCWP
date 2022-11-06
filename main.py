@@ -23,10 +23,10 @@ def main(args):
         solver = PruneSolver(args)
     elif args.mode == 'MRM':
         solver = PruneSolver(args)
+    elif args.mode == 'JTT':
+        solver = PruneSolver(args)
     elif args.mode == 'featureswap':
         solver = FeatureSwapSolver(args)
-    elif args.mode == 'LfF':
-        solver = LfFSolver(args)
     elif args.mode == 'ERM':
         solver = ERMSolver(args)
     else:
@@ -41,7 +41,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--mode', type=str, required=True,
-                        choices=['prune', 'featureswap', 'LfF', 'MRM', 'ERM'])
+                        choices=['prune', 'featureswap', 'LfF', 'MRM', 'ERM', 'JTT'])
 
     # Data arguments
     parser.add_argument('--data', type=str, default='cmnist',
@@ -72,6 +72,7 @@ if __name__ == '__main__':
     # Pruning
     parser.add_argument('--lr_prune', type=float, default=1e-2)
     parser.add_argument('--pruning_iter', type=int, default=2000)
+    parser.add_argument('--earlystop_iter', type=int, default=None)
 
     # Retraining
     parser.add_argument('--optimizer', type=str, required=False,
@@ -84,7 +85,7 @@ if __name__ == '__main__':
     parser.add_argument('--weight_decay', type=float, default=1e-4) #TODO: weight decay is important in JTT!
     parser.add_argument('--reinitialize', default=False, action='store_true') # MRM
     parser.add_argument('--uniform_weight', default=False, action='store_true') # MRM
-    parser.add_argument('--select_with_GCE', default=True, action='store_true')
+    parser.add_argument('--select_with_GCE', default=False, action='store_true')
 
     # For FeatureSwap
     parser.add_argument('--total_iter', type=int, default=20000)
@@ -104,7 +105,7 @@ if __name__ == '__main__':
     parser.add_argument('--supervised', default=False, action='store_true',
                         help='Use true bias label or not')
     parser.add_argument('--pseudo_label_method', type=str, required=False,
-                        choices=['wrong', 'score', 'ensemble'], default='ensemble')
+                        choices=['wrong', 'ensemble'], default='ensemble')
     parser.add_argument('--eta', type=float, default=0.05)
     parser.add_argument('--tau', type=float, default=0.8)
 

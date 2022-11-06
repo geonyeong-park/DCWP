@@ -66,7 +66,7 @@ class GateFCN(nn.Module):
         self.pruning = False
         self.freeze = False
 
-        self.linear1 = GateMLP(3*32*32, 100)
+        self.linear1 = GateMLP(3*28*28, 100)
         self.linear2 = GateMLP(100, 100)
         self.linear3 = GateMLP(100, 32)
         self.linear4 = GateMLP(32, 10)

@@ -21,15 +21,15 @@ transforms = {
     'original': {
         "cmnist": {
             "train": T.Compose([
-                T.Resize(32),
+                T.Resize(28),
                 T.ToTensor(),
             ]),
             "valid": T.Compose([
-                T.Resize(32),
+                T.Resize(28),
                 T.ToTensor(),
             ]),
             "test": T.Compose([
-                T.Resize(32),
+                T.Resize(28),
                 T.ToTensor(),
             ])
             },
@@ -37,9 +37,9 @@ transforms = {
 
     'preprocess': {
         "cmnist": {
-            "train": T.Compose([T.Resize(32), T.ToTensor()]),
-            "valid": T.Compose([T.Resize(32), T.ToTensor()]),
-            "test": T.Compose([T.Resize(32), T.ToTensor()])
+            "train": T.Compose([T.Resize(28), T.ToTensor()]),
+            "valid": T.Compose([T.Resize(28), T.ToTensor()]),
+            "test": T.Compose([T.Resize(28), T.ToTensor()])
             },
         "cub": {
             "train": T.Compose([

@@ -4,6 +4,7 @@ import time
 import datetime
 from munch import Munch
 import logging
+import pickle as pkl
 
 import torch
 import torch.nn as nn
@@ -261,6 +262,9 @@ class Solver(nn.Module):
             if (i+1) % pseudo_every == 0:
                 bias_score_array, debias_idx = self.update_pseudo_label(bias_score_array, fetcher_train, iters, pseudo_every)
 
+            if (i+1) % args.save_every == 0:
+                self._save_checkpoint(step=i+1, token='pretrain')
+
             if not self.args.no_lr_scheduling:
                 self.scheduler.classifier.step()
                 self.scheduler.biased_classifier.step()
@@ -301,3 +305,12 @@ class Solver(nn.Module):
         sample_path = lambda x: os.path.join(self.args.log_dir, f'{x}-tSNE.jpg')
         utils.plot_embedding(tsne, label, sample_path('class-aligned'))
         utils.plot_embedding(tsne, bias, sample_path('bias-aligned'))
+
+        with open(ospj(self.args.log_dir, 'tSNE.pkl'), 'wb') as f:
+            tsne_dict = {
+                'tsne': tsne,
+                'label': label,
+                'bias': bias
+            }
+            pkl.dump(tsne_dict, f)
+
