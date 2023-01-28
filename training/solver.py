@@ -48,9 +48,9 @@ class Solver(nn.Module):
             elif args.optimizer == 'SGD':
                 self.optims[net] = torch.optim.SGD(
                     self.nets[net].parameters(),
-                    lr=args.lr_pre_bias if 'biased' in net else args.lr_pre_main,
+                    lr=args.lr_pre,
                     momentum=0.9,
-                    weight_decay=args.weight_decay_pre if 'biased' in net else 1e-4
+                    weight_decay=args.weight_decay
                 )
 
         self.scheduler = Munch()
@@ -176,8 +176,8 @@ class Solver(nn.Module):
             attr = attr[:, [0, 1]]
             attrwise_acc_meter.add(correct.cpu(), attr.cpu())
 
-        print(attrwise_acc_meter.cum.view(self.attr_dims[0], -1))
-        print(attrwise_acc_meter.cnt.view(self.attr_dims[0], -1))
+        #print(attrwise_acc_meter.cum.view(self.attr_dims[0], -1))
+        #print(attrwise_acc_meter.cnt.view(self.attr_dims[0], -1))
 
         total_acc = total_correct / float(total_num)
         accs = attrwise_acc_meter.get_mean()
@@ -197,8 +197,6 @@ class Solver(nn.Module):
             all_acc[key] = acc
         log = f"({which} Validation) Iteration [{step+1}], "
         log += ' '.join(['%s: [%.4f]' % (key, value) for key, value in all_acc.items()])
-        log += '\n'
-        log += ' '.join(['%s: [%.4f]' % (key, value) for key, value in enumerate(valid_attrwise_acc.view(-1))])
         print(log)
         logging.info(log)
         if save_in_result:

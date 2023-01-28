@@ -22,7 +22,7 @@ class FeatureSwapSolver(Solver):
         for net in self.nets.keys():
             self.optims[net] = torch.optim.Adam(
                 params=self.nets[net].parameters(),
-                lr=args.lr,
+                lr=args.lr_pre,
                 betas=(args.beta1, args.beta2),
                 weight_decay=0
             )
@@ -31,7 +31,7 @@ class FeatureSwapSolver(Solver):
         if not args.no_lr_scheduling:
             for net in self.nets.keys():
                 self.scheduler[net] = torch.optim.lr_scheduler.StepLR(
-                    self.optims[net], step_size=args.lr_decay_step, gamma=args.lr_gamma)
+                    self.optims[net], step_size=args.lr_decay_step_pre, gamma=args.lr_gamma_pre)
 
     def validation(self, fetcher, swap=False):
         self.nets.biased_F.eval()

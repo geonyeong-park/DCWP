@@ -67,8 +67,6 @@ if __name__ == '__main__':
     parser.add_argument('--lr_decay_step_pre', type=int, default=600)
     parser.add_argument('--lr_gamma_pre', type=float, default=0.1)
     parser.add_argument('--lr_pre', type=float, default=1e-1)
-    parser.add_argument('--lr_pre_bias', type=float, default=1e-5)
-    parser.add_argument('--lr_pre_main', type=float, default=1e-4)
     parser.add_argument('--pretrain_iter', type=int, default=2000)
 
     # Pruning
@@ -85,8 +83,6 @@ if __name__ == '__main__':
     parser.add_argument('--lr_gamma_main', type=float, default=0.1)
 
     parser.add_argument('--weight_decay', type=float, default=1e-4) #TODO: weight decay is important in JTT!
-    parser.add_argument('--weight_decay_pre', type=float, default=0.1) #TODO: weight decay is important in JTT!
-    parser.add_argument('--weight_decay_main', type=float, default=0.1) #TODO: weight decay is important in JTT!
     parser.add_argument('--reinitialize', default=False, action='store_true') # MRM
     parser.add_argument('--uniform_weight', default=False, action='store_true') # MRM
     parser.add_argument('--select_with_GCE', default=False, action='store_true')

@@ -42,7 +42,7 @@ class PruneSolver(Solver):
                     main_param,
                     lr=args.lr_main,
                     momentum=0.9,
-                    weight_decay=args.weight_decay_main if not 'biased' in net else 1e-4
+                    weight_decay=args.weight_decay
                 )
 
             self.optims_mask[net] = torch.optim.Adam(
