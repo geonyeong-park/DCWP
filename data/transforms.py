@@ -5,6 +5,7 @@ use_preprocess = {
     'bffhq': True,
     'cifar10c': True,
     'cub': True,
+    'celebA': True,
     'bar': True
 }
 
@@ -13,6 +14,7 @@ num_classes = {
     'bffhq': 2,
     'cifar10c': 10,
     'cub': 2,
+    'celebA': 2,
     'bar': 6
 }
 
@@ -43,8 +45,40 @@ transforms = {
             },
         "cub": {
             "train": T.Compose([
+                T.RandomResizedCrop(
+                224,
+                scale=(0.7, 1.0),
+                ratio=(0.75, 1.3333333333333333),
+                interpolation=2,
+                ),
+                T.RandomHorizontalFlip(),
+                T.ToTensor(),
+                T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            ]),
+
+            "valid": T.Compose([
                 T.Resize(256),
                 T.CenterCrop(224),
+                T.ToTensor(),
+                T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            ]),
+
+            "test": T.Compose([
+                T.Resize(256),
+                T.CenterCrop(224),
+                T.ToTensor(),
+                T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            ]),
+        },
+        "celebA": {
+            "train": T.Compose([
+                T.RandomResizedCrop(
+                224,
+                scale=(0.7, 1.0),
+                ratio=(0.75, 1.3333333333333333),
+                interpolation=2,
+                ),
+                T.RandomHorizontalFlip(),
                 T.ToTensor(),
                 T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
             ]),

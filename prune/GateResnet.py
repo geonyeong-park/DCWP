@@ -253,7 +253,7 @@ class ResNet(nn.Module):
 
         return nn.ModuleList(layers)
 
-    def layer_forward(self, layer, out, pruning, freeze):
+    def layer_forward(self, layer, out, pruning=False, freeze=False):
         x = out
         for block in layer:
             x = block(x, pruning, freeze)
@@ -292,6 +292,45 @@ class ResNet(nn.Module):
 
     def freeze_switch(self, turn_on=False):
         self.freeze = turn_on
+
+
+class LowPassResNet(ResNet):
+    """ Apply pruning only for higher layers """
+    def __init__(
+        self,
+        block: Type[Union[BasicBlock, Bottleneck]],
+        layers: List[int],
+        num_classes: int = 1000,
+        zero_init_residual: bool = False,
+        groups: int = 1,
+        width_per_group: int = 64,
+        replace_stride_with_dilation: Optional[List[bool]] = None,
+        norm_layer: Optional[Callable[..., nn.Module]] = None,
+    ) -> None:
+        super(LowPassResNet, self).__init__(block, layers, num_classes, zero_init_residual,
+                                      groups, width_per_group, replace_stride_with_dilation,
+                                      norm_layer)
+
+    def _forward_impl(self, x: Tensor, pruning=False, freeze=False, feature=False) -> Tensor:
+        # See note [TorchScript super()]
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
+
+        x = self.layer_forward(self.layer1, x)
+        x = self.layer_forward(self.layer2, x, pruning, freeze)
+        x = self.layer_forward(self.layer3, x, pruning, freeze)
+        x = self.layer_forward(self.layer4, x, pruning, freeze)
+
+        x = self.avgpool(x)
+        feature_ = torch.flatten(x, 1)
+        x = self.fc(feature_, pruning, freeze)
+
+        if feature:
+            return x, feature_
+        else:
+            return x
 
 
 def GateResNet18(IMAGENET_pretrained=False, n_classes=10):
@@ -333,6 +372,18 @@ def GateResNet101(IMAGENET_pretrained=False, n_classes=10):
         net.load_state_dict(checkpoint, strict=False)
     net = modify_last_layer(net, n_classes)
     return net
+
+
+def LowPassGateResNet18(IMAGENET_pretrained=False, n_classes=10):
+    net = LowPassResNet(BasicBlock, [2, 2, 2, 2])
+    if IMAGENET_pretrained:
+        url = URL_DICT['resnet18']
+        print(f'Load {url}')
+        checkpoint = load_url(url)
+        net.load_state_dict(checkpoint, strict=False)
+    net = modify_last_layer(net, n_classes)
+    return net
+
 
 def modify_last_layer(net, n_classes=10):
     d = net.fc.in_features

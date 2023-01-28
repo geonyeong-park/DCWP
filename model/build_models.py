@@ -5,7 +5,7 @@ from model.resnet import ResNet18, ResNet34
 from model.wide_resnet import WideResNet28_10, WideResNet16_8
 
 from prune.GateSimpleModel import GateCNN, GateFCN
-from prune.GateResnet import GateResNet18, GateResNet34
+from prune.GateResnet import GateResNet18, GateResNet34, LowPassGateResNet18
 from prune.GateWideResnet import GateWideResNet28_10, GateWideResNet16_8
 
 from data.transforms import num_classes

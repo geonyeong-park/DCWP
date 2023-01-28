@@ -48,9 +48,9 @@ class Solver(nn.Module):
             elif args.optimizer == 'SGD':
                 self.optims[net] = torch.optim.SGD(
                     self.nets[net].parameters(),
-                    lr=args.lr_pre,
+                    lr=args.lr_pre_bias if 'biased' in net else args.lr_pre_main,
                     momentum=0.9,
-                    weight_decay=args.weight_decay
+                    weight_decay=args.weight_decay_pre if 'biased' in net else 1e-4
                 )
 
         self.scheduler = Munch()
@@ -149,8 +149,12 @@ class Solver(nn.Module):
         self.nets.classifier.train()
         self.nets.biased_classifier.train()
 
-    def validation(self, fetcher):
-        self.nets.classifier.eval()
+    def validation(self, fetcher, which='main'):
+        if which == 'main':
+            local_classifier = self.nets.classifier
+        else:
+            local_classifier = self.nets.biased_classifier
+        local_classifier = local_classifier.eval()
 
         attrwise_acc_meter = MultiDimAverageMeter(self.attr_dims)
         iterator = enumerate(fetcher)
@@ -162,7 +166,7 @@ class Solver(nn.Module):
             data = data.to(self.device)
 
             with torch.no_grad():
-                logit = self.nets.classifier(data)
+                logit = local_classifier(data)
                 pred = logit.data.max(1, keepdim=True)[1].squeeze(1)
                 correct = (pred == label).long()
 
@@ -172,13 +176,13 @@ class Solver(nn.Module):
             attr = attr[:, [0, 1]]
             attrwise_acc_meter.add(correct.cpu(), attr.cpu())
 
-        #print(attrwise_acc_meter.cum.view(self.attr_dims[0], -1))
-        #print(attrwise_acc_meter.cnt.view(self.attr_dims[0], -1))
+        print(attrwise_acc_meter.cum.view(self.attr_dims[0], -1))
+        print(attrwise_acc_meter.cnt.view(self.attr_dims[0], -1))
 
         total_acc = total_correct / float(total_num)
         accs = attrwise_acc_meter.get_mean()
 
-        self.nets.classifier.train()
+        local_classifier = local_classifier.train()
         return total_acc, accs
 
     def report_validation(self, valid_attrwise_acc, valid_acc,
@@ -193,6 +197,8 @@ class Solver(nn.Module):
             all_acc[key] = acc
         log = f"({which} Validation) Iteration [{step+1}], "
         log += ' '.join(['%s: [%.4f]' % (key, value) for key, value in all_acc.items()])
+        log += '\n'
+        log += ' '.join(['%s: [%.4f]' % (key, value) for key, value in enumerate(valid_attrwise_acc.view(-1))])
         print(log)
         logging.info(log)
         if save_in_result:
@@ -231,7 +237,10 @@ class Solver(nn.Module):
                 bias_prob = nn.Softmax()(pred_bias)[torch.arange(pred_bias.size(0)), label]
                 loss_bias = loss_bias[bias_prob > args.eta].mean() # Choose samples with high confidence
             else:
-                loss_bias = self.bias_criterion(pred_bias, label).mean()
+                if args.select_with_GCE:
+                    loss_bias = self.bias_criterion(pred_bias, label).mean()
+                else:
+                    loss_bias = self.criterion(pred_bias, label).mean()
 
             self._reset_grad()
             loss.backward()
@@ -258,6 +267,9 @@ class Solver(nn.Module):
                 total_acc, valid_attrwise_acc = self.validation(fetcher_val)
                 self.report_validation(valid_attrwise_acc, total_acc, i, which='main')
                 self.valid_logger.append(total_acc.item(), which='ERM')
+
+                total_acc_b, valid_attrwise_acc_b = self.validation(fetcher_val, which='bias')
+                self.report_validation(valid_attrwise_acc_b, total_acc_b, i, which='bias')
 
             if (i+1) % pseudo_every == 0:
                 bias_score_array, debias_idx = self.update_pseudo_label(bias_score_array, fetcher_train, iters, pseudo_every)

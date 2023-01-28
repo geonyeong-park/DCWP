@@ -5,14 +5,15 @@ from torch.utils import data
 from munch import Munch
 from data.transforms import transforms, use_preprocess
 from data.dataset import CMNISTDataset, CIFAR10Dataset, bFFHQDataset, CUBDataset, \
-    BARDataset, IdxDataset
+    BARDataset, CelebADataset, IdxDataset
 
 
 dataset_name_dict = {'cifar10c': CIFAR10Dataset,
                      'cmnist': CMNISTDataset,
                      'bffhq': bFFHQDataset,
                      'bar': BARDataset,
-                     'cub': CUBDataset}
+                     'cub': CUBDataset,
+                     'celebA': CelebADataset}
 
 def get_original_loader(args, return_dataset=False, sampling_weight=None):
     dataset_name = args.data
@@ -26,8 +27,8 @@ def get_original_loader(args, return_dataset=False, sampling_weight=None):
     else:
         dataset = IdxDataset(dataset)
         if sampling_weight is not None:
-            # replacement = False if sampling_weight.sum() > args.batch_size else True
-            sampler = WeightedRandomSampler(sampling_weight, args.batch_size, replacement=False)
+            #TODO: replace?
+            sampler = WeightedRandomSampler(sampling_weight, args.batch_size, replacement=True)
             return data.DataLoader(dataset=dataset,
                                    batch_size=args.batch_size,
                                    shuffle=False,

@@ -42,7 +42,7 @@ class PruneSolver(Solver):
                     main_param,
                     lr=args.lr_main,
                     momentum=0.9,
-                    weight_decay=args.weight_decay
+                    weight_decay=args.weight_decay_main if not 'biased' in net else 1e-4
                 )
 
             self.optims_mask[net] = torch.optim.Adam(
@@ -82,14 +82,18 @@ class PruneSolver(Solver):
             data = data.to(self.device)
 
             with torch.no_grad():
-                if self.args.select_with_GCE:
+                if self.args.select_with_GCE or self.args.data == 'celebA' or self.args.data == 'cub':
                     logit = self.nets.biased_classifier(data)
                 else:
                     logit = self.nets.classifier(data)
 
                 pred = logit.data.max(1, keepdim=True)[1].squeeze(1)
                 wrong = (pred != label).long()
-                debiased = (label != bias_label).long()
+
+                if self.args.data != 'celebA':
+                    debiased = (label != bias_label).long()
+                else:
+                    debiased = (label == bias_label).long()
 
                 total_wrong += wrong.sum()
                 total_num += wrong.shape[0]
