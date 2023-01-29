@@ -199,7 +199,7 @@ class PruneSolver(Solver):
 
                         total += total_n
                         active += active_n
-                        if active_n == 0: raise ValueError('Warning: Dead layer')
+                        if active_n == 0: print('Warning: Dead layer')
 
                 ratio = active / total
                 print('ratio:', ratio)
