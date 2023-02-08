@@ -88,7 +88,8 @@ class ValidLogger(object):
             'prune': [],
             'retrain': [],
             'ratio': [], # Ratio of survived weights during pruning
-            'layerwise_ratio': [] # Layerwise ratio of survived weights. Dictionary will be saved
+            'layerwise_ratio': [], # Layerwise ratio of survived weights. Dictionary will be saved
+            'groupwise_acc': []
         }
 
     def append(self, val, which='ERM'):

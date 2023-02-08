@@ -268,6 +268,7 @@ class PruneSolver(Solver):
                 total_acc, valid_attrwise_acc = self.validation(fetcher_val)
                 self.report_validation(valid_attrwise_acc, total_acc, i, which='retrain')
                 self.valid_logger.append(total_acc.item(), which='retrain')
+                self.valid_logger.append(valid_attrwise_acc, which='groupwise_acc')
 
             if not self.args.no_lr_scheduling:
                 self.scheduler_main.classifier.step()
