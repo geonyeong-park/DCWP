@@ -74,7 +74,10 @@ We provide multiple bash scripts for each dataset.
 bash train_ours_{dataset}.sh {gpu} 
 ```
 where `dataset` corresponds to one of _cmnist, cifar10c, bffhq, celeba_. `gpu` indicates the index of GPU, e.g. 0.
-Some of key arguments are summarized below:
+In general, (1) pre-training, (2) mining, (3) pruning, and (4) fine-tuning can be executed in a single process without termination.
+For CMNIST, (1) and (2) are conducted with SGD, and (3) and (4) are conducted with Adam. 
+
+Some of the key arguments are summarized below:
 - `--mode`: `prune` corresponds to the proposed framework.
 - `--conflict_pct`: Percent of bias-conflicting samples (for CMNIST, CIFAR10-C).
 - `--lambda_upweight`: $\lambda_{up}$ in $\ell_{WCE}$.
