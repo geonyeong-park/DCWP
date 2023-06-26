@@ -14,7 +14,7 @@ for s in ${seed[@]}; do
         echo "GPU: $1"
         echo "Data: $2"
 
-        CUDA_VISIBLE_DEVICES=$1 python main.py --mode prune --data $2 \
+        CUDA_VISIBLE_DEVICES=$1 python main.py --mode prune --data cifar10c \
             --conflict_pct $conflict_pct --lambda_upweight $upweight \
             --pseudo_label_method ensemble --seed $s \
             --lambda_sparse 1e-9 --lr_pre 1e-3 --lr_decay_step_pre 10000 --lr_gamma_pre 0.5 \

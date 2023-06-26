@@ -5,10 +5,7 @@ from munch import Munch
 from torch.backends import cudnn
 import torch
 
-from training.solver import Solver
-from training.ERM_solver import ERMSolver
 from training.pruning_solver import PruneSolver
-from training.feature_swap_solver import FeatureSwapSolver
 from util import setup, save_config, modify_args_for_baselines
 
 
@@ -19,18 +16,7 @@ def main(args):
     cudnn.benchmark = True
     torch.manual_seed(args.seed)
 
-    if args.mode == 'prune':
-        solver = PruneSolver(args)
-    elif args.mode == 'MRM':
-        solver = PruneSolver(args)
-    elif args.mode == 'JTT':
-        solver = PruneSolver(args)
-    elif args.mode == 'featureswap':
-        solver = FeatureSwapSolver(args)
-    elif args.mode == 'ERM':
-        solver = ERMSolver(args)
-    else:
-        raise NotImplementedError
+    solver = PruneSolver(args)
 
     if args.phase == 'train':
         solver.train()
@@ -41,11 +27,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--mode', type=str, required=True,
-                        choices=['prune', 'featureswap', 'LfF', 'MRM', 'ERM', 'JTT'])
+                        choices=['prune', 'MRM'])
 
     # Data arguments
     parser.add_argument('--data', type=str, default='cmnist',
-                        choices=['cmnist', 'cifar10c', 'bffhq', 'cub', 'bar', 'celebA'])
+                        choices=['cmnist', 'cifar10c', 'bffhq', 'celebA'])
     parser.add_argument('--cmnist_use_mlp', default=False, action='store_true')
     parser.add_argument('--conflict_pct', type=float, default=5., choices=[0.5, 1., 2., 5.],
                         help='Percent of bias-conflicting data')
@@ -111,8 +97,8 @@ if __name__ == '__main__':
 
 
     # directory for training
-    parser.add_argument('--train_root_dir', type=str, default='/home/user/research/dataset')
-    parser.add_argument('--val_root_dir', type=str, default='/home/user/research/dataset')
+    parser.add_argument('--train_root_dir', type=str, default='dataset')
+    parser.add_argument('--val_root_dir', type=str, default='dataset')
     parser.add_argument('--log_dir', type=str, default='expr/log')
     parser.add_argument('--result_dir', type=str, default='expr/results',
                         help='Directory for saving generated images')

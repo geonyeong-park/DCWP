@@ -82,7 +82,7 @@ class PruneSolver(Solver):
             data = data.to(self.device)
 
             with torch.no_grad():
-                if self.args.select_with_GCE or self.args.data == 'celebA' or self.args.data == 'cub':
+                if self.args.select_with_GCE or self.args.data == 'celebA':
                     logit = self.nets.biased_classifier(data)
                 else:
                     logit = self.nets.classifier(data)
