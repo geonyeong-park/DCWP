@@ -3,7 +3,7 @@
 [![arXiv](https://img.shields.io/badge/arXiv-2210.05247-b31b1b.svg)](https://arxiv.org/abs/2210.05247)
 
 ## Abstract
-Neural networks are often biased to spuriously correlated features that provide misleading statistical evidence that does not generalize. 
+> Neural networks are often biased to spuriously correlated features that provide misleading statistical evidence that does not generalize. 
 This raises an interesting question: "Does an optimal unbiased functional subnetwork exist in a severely biased network? If so, how to extract such subnetwork?" 
 While empirical evidence has been accumulated about the existence of such unbiased subnetworks, these observations are mainly based on the guidance of ground-truth unbiased samples. 
 Thus, it is unexplored how to discover the optimal subnetworks with biased training datasets in practice. To address this, here we first present our theoretical insight that alerts potential limitations of existing algorithms in exploring unbiased subnetworks in the presence of strong spurious correlations. 
