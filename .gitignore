@@ -111,3 +111,10 @@ venv.bak/
 # results folder
 expr/
 
+# scripts
+script/
+!script/train_ours_bffhq.sh
+!script/train_ours_cmnist.sh
+!script/train_ours_cifar10c.sh
+!script/train_ours_celeba.sh
+

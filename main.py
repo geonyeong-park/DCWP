@@ -19,18 +19,7 @@ def main(args):
     cudnn.benchmark = True
     torch.manual_seed(args.seed)
 
-    if args.mode == 'prune':
-        solver = PruneSolver(args)
-    elif args.mode == 'MRM':
-        solver = PruneSolver(args)
-    elif args.mode == 'JTT':
-        solver = PruneSolver(args)
-    elif args.mode == 'featureswap':
-        solver = FeatureSwapSolver(args)
-    elif args.mode == 'ERM':
-        solver = ERMSolver(args)
-    else:
-        raise NotImplementedError
+    solver = PruneSolver(args)
 
     if args.phase == 'train':
         solver.train()
@@ -41,11 +30,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--mode', type=str, required=True,
-                        choices=['prune', 'featureswap', 'LfF', 'MRM', 'ERM', 'JTT'])
+                        choices=['prune', 'MRM'])
 
     # Data arguments
     parser.add_argument('--data', type=str, default='cmnist',
-                        choices=['cmnist', 'cifar10c', 'bffhq', 'cub', 'bar', 'celebA'])
+                        choices=['cmnist', 'cifar10c', 'bffhq', 'celebA'])
     parser.add_argument('--cmnist_use_mlp', default=False, action='store_true')
     parser.add_argument('--conflict_pct', type=float, default=5., choices=[0.5, 1., 2., 5.],
                         help='Percent of bias-conflicting data')
