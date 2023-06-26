@@ -5,10 +5,7 @@ from munch import Munch
 from torch.backends import cudnn
 import torch
 
-from training.solver import Solver
-from training.ERM_solver import ERMSolver
 from training.pruning_solver import PruneSolver
-from training.feature_swap_solver import FeatureSwapSolver
 from util import setup, save_config, modify_args_for_baselines
 
 
@@ -100,8 +97,8 @@ if __name__ == '__main__':
 
 
     # directory for training
-    parser.add_argument('--train_root_dir', type=str, default='/home/user/research/dataset')
-    parser.add_argument('--val_root_dir', type=str, default='/home/user/research/dataset')
+    parser.add_argument('--train_root_dir', type=str, default='dataset')
+    parser.add_argument('--val_root_dir', type=str, default='dataset')
     parser.add_argument('--log_dir', type=str, default='expr/log')
     parser.add_argument('--result_dir', type=str, default='expr/results',
                         help='Directory for saving generated images')

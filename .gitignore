@@ -118,3 +118,6 @@ script/
 !script/train_ours_cifar10c.sh
 !script/train_ours_celeba.sh
 
+# dataset
+dataset/
+!dataset/metadata_blonde_subsampled.csv
