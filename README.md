@@ -11,6 +11,8 @@ We then further elucidate the importance of bias-conflicting samples on structur
 Motivated by these observations, we propose a Debiased Contrastive Weight Pruning (DCWP) algorithm, which probes unbiased subnetworks without expensive group annotations. 
 Experimental results demonstrate that our approach significantly outperforms state-of-the-art debiasing methods despite its considerable reduction in the number of parameters.
 
+![concept](dataset/concept.png)
+
 ## Prerequisites
 - python 3.8
 - pytorch >= 1.13.1
@@ -34,7 +36,9 @@ conda activate DCWP
 
 ### 3. Dataset
 
-We use four different biased datasets: CMNIST, CIFAR10-C, BFFHQ and CelebA (blonde). Every data files should be saved in the `dataset` folder.
+![sample](dataset/sample_figure.png)
+
+We use four different biased datasets: CMNIST, CIFAR10-C, BFFHQ and CelebA (blonde). Every data files should be saved in the `dataset/{dataset_name}` folder.
 - CMNIST, CIFAR10-C and BFFHQ: download the datasets [here](https://drive.google.com/drive/folders/1JEOqxrhU_IhkdcRohdbuEtFETUxfNmNT)
 which comes from [DisEnt](https://github.com/kakaoenterprise/Learning-Debiased-Disentangled).
 
@@ -65,5 +69,20 @@ dataset/celebA
 ```
 
 ## Main scripts
-
-
+We provide multiple bash scripts for each dataset. 
+```
+bash train_ours_{dataset}.sh {gpu} 
+```
+where `dataset` corresponds to one of _cmnist, cifar10c, bffhq, celeba_. `gpu` indicates the index of GPU, e.g. 0.
+Some of key arguments are summarized below:
+- `--mode`: `prune` corresponds to the proposed framework.
+- `--conflict_pct`: Percent of bias-conflicting samples (for CMNIST, CIFAR10-C).
+- `--lambda_upweight`: $\lambda_{up}$ in $\ell_{WCE}$.
+- `--lambda_sparse`: $\lambda_{\ell_1}$ in main objective, eq (11).
+- `--pseudo_label_method`: Bias-conflicting mining algorithms.
+   - `wrong` treats the samples misclassified by the biased model as bias-conflicting proxies. If `--select_with_GCE`, the biased model is trained with GCE.
+   - `ensemble` refers to the algorithms modified from [here](https://arxiv.org/abs/2111.13108). Only used for CIFAR10-C.
+- `--lr_pre, lr_main`: Learning rate for pre-training and fine-tuning.
+- `--pretrain_iter, retrain_iter`: Number of pre-training and fine-tuning iterations.
+- `--lr_decay_step_pre, lr_decay_step_main`: Learning rate decay step. Usually we did not use learning rate decaying, i.e. `lr_decay_step_pre == pretrain_iter`.
+- `--imagenet`: Initialize from ImageNet-pretrained weights.
