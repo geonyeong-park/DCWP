@@ -28,14 +28,42 @@ cd DCWP
 
 ### 2. Set the environment
 ```
-TBD
+conda env create --name DCWP --file env.yaml
+conda activate DCWP
 ```
 
 ### 3. Dataset
 
-We use four different biased datasets: CMNIST, CIFAR10-C, BFFHQ and CelebA (blonde). 
+We use four different biased datasets: CMNIST, CIFAR10-C, BFFHQ and CelebA (blonde). Every data files should be saved in the `dataset` folder.
 - CMNIST, CIFAR10-C and BFFHQ: download the datasets [here](https://drive.google.com/drive/folders/1JEOqxrhU_IhkdcRohdbuEtFETUxfNmNT)
 which comes from [DisEnt](https://github.com/kakaoenterprise/Learning-Debiased-Disentangled).
 
-- CelebA: download from [here](https://www.kaggle.com/datasets/jessicali9530/celeba-dataset)
+- CelebA: download from [here](https://www.kaggle.com/datasets/jessicali9530/celeba-dataset). In `dataset/celebA`, `metadata_blonde_subsampled.csv` denotes the metadata of each image, e.g. label, split, etc. 
+- Sample images are presented in each `dataset/{dataset_name}` folder. After download, the images should be saved in `dataset` following the below structure:
+
+```
+dataset/cmnist, cifar10c 
+ └ 0.5pct / 1pct / 2pct / 5pct
+     └ align
+     └ conlict
+     └ valid
+ └ test
+```
+
+```
+dataset/bffhq
+ └ 0.5pct
+ └ valid
+ └ test
+```
+
+```
+dataset/celebA
+ └ celeba
+    └ img_align_celeba
+ └ metadata_blonde_subsampled.csv
+```
+
+## Main scripts
+
 
