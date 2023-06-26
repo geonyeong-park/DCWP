@@ -119,5 +119,9 @@ script/
 !script/train_ours_celeba.sh
 
 # dataset
-dataset/
 !dataset/metadata_blonde_subsampled.csv
+
+# unncessaries
+data/celebA.py
+training/ERM_solver.py
+training/feature_swap_solver.py
