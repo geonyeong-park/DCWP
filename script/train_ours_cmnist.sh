@@ -10,14 +10,14 @@ for s in ${seed[@]}; do
         conflict_pct=${conflict[$i]}
         upweight=${weight[$i]}
 
-        CUDA_VISIBLE_DEVICES=$1 python main.py --mode prune --data $2 \
+        CUDA_VISIBLE_DEVICES=$1 python main.py --mode prune --data cmnist \
             --conflict_pct $conflict_pct --lambda_upweight 0 \
             --seed $s --optimizer SGD \
             --select_with_GCE --pseudo_label_method wrong \
             --pruning_iter 0 --retrain_iter 0 \
             --log_dir expr/log_new --checkpoint_dir expr/checkpoints_new
 
-        CUDA_VISIBLE_DEVICES=$1 python main.py --mode prune --data $2 \
+        CUDA_VISIBLE_DEVICES=$1 python main.py --mode prune --data cmnist \
             --conflict_pct $conflict_pct --lambda_upweight $upweight \
             --seed $s --optimizer Adam \
             --lr_pre 1e-2 --pretrain_iter 10000 \
