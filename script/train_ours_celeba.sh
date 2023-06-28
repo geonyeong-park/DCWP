@@ -11,7 +11,7 @@ for s in ${seed[@]}; do
     CUDA_VISIBLE_DEVICES=$1 python main.py --mode prune --data celebA \
         --conflict_pct 1 --lambda_upweight 20 \
         --pseudo_label_method wrong --select_with_GCE --seed $s --batch_size 128 \
-        --lambda_sparse 1e-9 --lr_pre 1e-4 --lr_decay_step_pre 10000 --lr_gamma_pre 0.5 \
+        --lambda_sparse 5e-6 --lr_pre 1e-4 --lr_decay_step_pre 10000 --lr_gamma_pre 0.5 \
         --pretrain_iter 10000 --lr_main 5e-4 --lr_decay_step_main 10000 --retrain_iter 1000 \
         --imagenet --log_dir expr/log_new --checkpoint_dir expr/checkpoints_new
 done
